@@ -1,0 +1,9 @@
+venv312/
+Assets/
+dataset_raw/
+dataset_yolo/
+VisDrone.zip
+datasets/
+runs/
+visdrone_vehicles.yaml
+yolov8n.pt
