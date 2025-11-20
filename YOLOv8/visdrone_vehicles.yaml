@@ -1,0 +1,8 @@
+names:
+- car
+- van
+- truck
+- bus
+nc: 0
+train: c:\Users\Sean\OneDrive - Atlantic TU\Year 4\Final Year Project\AI PARKING FINDER\Juyptre\dataset_yolo/images/train
+val: c:\Users\Sean\OneDrive - Atlantic TU\Year 4\Final Year Project\AI PARKING FINDER\Juyptre\dataset_yolo/images/val

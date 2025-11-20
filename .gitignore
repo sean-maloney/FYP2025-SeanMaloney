@@ -1,0 +1,11 @@
+FastApi/app_parking/uploads/
+FastApi/app_parking/outputs/
+YOLOv8/datasets/
+VisDrone.zip
+*.pt
+__pycache__/
+*.pyc 
+*.pyo
+.venv/
+runs/
+!runs/**/best.pt
