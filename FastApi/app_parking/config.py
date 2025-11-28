@@ -14,7 +14,7 @@ OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 YOLO_WEIGHTS_PATH = (
     PROJECT_ROOT
     / "runs"
-    / "train"                    
+    / "detect"                    
     / "visdrone_parking_detector5" 
     / "weights"
     / "best.pt"

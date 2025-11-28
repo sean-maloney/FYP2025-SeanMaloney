@@ -41,7 +41,6 @@ def health():
     return {"status": "ok"}
 
 
-# 1) upload + process
 @app.post("/api/videos", status_code=status.HTTP_201_CREATED)
 async def upload_video(file: UploadFile = File(...)): #... to make sure a file is uploaded
     global job_counter
@@ -72,6 +71,7 @@ async def upload_video(file: UploadFile = File(...)): #... to make sure a file i
     }
 
 
+
 # 2) get processed video
 @app.get("/api/videos/{job_id}", response_class=FileResponse) #not returning json, returning a file
 async def get_video(job_id: int): #gets the video by the correlating id
@@ -89,7 +89,7 @@ async def get_video(job_id: int): #gets the video by the correlating id
     return FileResponse(
         path=str(video_path), #where it is on disc
         media_type="video/mp4", #tell the browser it's a video
-        filename=video_path.name,  #changes the name of the download file
+        headers={"Content-Disposition": f'inline; filename="{video_path.name}"'},  #changes the name of the download file
     )
 
 
