@@ -25,19 +25,25 @@ def load_yolo_model():
 def run_yolo_on_video(input_path: Path, job_name: str) -> Path:
     if yolo_model is None:
         raise RuntimeError("YOLO model not loaded")
-
-    job_dir = OUTPUT_DIR / job_name
-    job_dir.mkdir(parents=True, exist_ok=True)
+    
+    job_dir = OUTPUT_DIR/job_name
+    job_dir.mkdir(parents=True,exist_ok=True)
 
     # run yolo, saves video as avi, then stores it in job dir
-    yolo_model.predict(
+    results = yolo_model.predict(
         source=str(input_path),
         save=True,
         project=str(OUTPUT_DIR),
         name=job_name,
         show=False,
         vid_stride=1,
+        exist_ok=True,
     )
+
+
+    
+    print(f"[INFO] Yolo save_dir reported: {results[0].save_dir}")
+    print(f"[INFO] Using job_dir : {job_dir}")
 
     # check for any mp4 or avi files from yolo
     mp4_files = list(job_dir.glob("*.mp4"))

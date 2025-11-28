@@ -1,5 +1,5 @@
 import Link from "next/link" //imports next.js's built in link component that lets you navigate between pages without reloading
-import classes from "../style/Home.module.css"; //imports styling classes becomes a object where each key is a css class name scoped only to the component
+import classes from "../styles/Home.module.css"; //imports styling classes becomes a object where each key is a css class name scoped only to the component
 
 function HomePage(){ //declares a function name HopePage (component)
     return( //begins the jsx returned by the componennt (whatever gets rendered on screen)
