@@ -38,4 +38,12 @@ torch
 torchvision
 torchaudio
 opencv-python
+fastapi
+uvicorn
+python-multipart
+motor
+python-dotenv
+pydantic
+opencv-python
+ultralytics
 
