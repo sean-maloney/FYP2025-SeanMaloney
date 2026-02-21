@@ -1,8 +1,11 @@
 from pathlib import Path
-import cv2  # type: ignore
-from ultralytics import YOLO  # type: ignore
+from typing import Any, Dict, List, Optional, Tuple
 
-from .config import YOLO_WEIGHTS_PATH, YOLO_DEVICE, OUTPUT_DIR
+import cv2
+import numpy as np
+from ultralytics import YOLO
+
+from .config import YOLO_WEIGHTS_PATH, YOLO_DEVICE
 
 yolo_model: YOLO | None = None
 
@@ -11,76 +14,161 @@ def load_yolo_model():
     global yolo_model
 
     if not YOLO_WEIGHTS_PATH.exists():
-        print(f"[WARN] YOLO weights not found at: {YOLO_WEIGHTS_PATH}")
         yolo_model = None
         return
 
-    print(f"[INFO] Loading YOLO model from: {YOLO_WEIGHTS_PATH}")
     model = YOLO(str(YOLO_WEIGHTS_PATH))
-    model.to(YOLO_DEVICE)
+    try:
+        model.to(YOLO_DEVICE)
+    except Exception:
+        pass
     yolo_model = model
-    print("[INFO] YOLO model loaded")
 
 
-def run_yolo_on_video(input_path: Path, job_name: str) -> Path:
+def _norm_poly_to_px(poly: List[Dict[str, float]], w: int, h: int) -> np.ndarray:
+    pts = [(int(p["x"] * w), int(p["y"] * h)) for p in poly]
+    return np.array(pts, dtype=np.int32).reshape((-1, 1, 2))
+
+
+def _is_point_in_poly(px: int, py: int, poly_np: np.ndarray) -> bool:
+    return cv2.pointPolygonTest(poly_np, (float(px), float(py)), False) >= 0
+
+
+def _bottom_center(x1: float, y1: float, x2: float, y2: float) -> Tuple[int, int]:
+    return int((x1 + x2) / 2.0), int(y2)
+
+
+def run_inference_with_spots(
+    input_video: Path,
+    output_dir: Path,
+    spots_doc: Dict[str, Any],
+    conf: float = 0.25,
+    vehicle_class_ids: Optional[List[int]] = None,
+) -> Tuple[Path, int, int]:
     if yolo_model is None:
         raise RuntimeError("YOLO model not loaded")
-    
-    job_dir = OUTPUT_DIR/job_name
-    job_dir.mkdir(parents=True,exist_ok=True)
 
-    # run yolo, saves video as avi, then stores it in job dir
-    results = yolo_model.predict(
-        source=str(input_path),
-        save=True,
-        project=str(OUTPUT_DIR),
-        name=job_name,
-        show=False,
-        vid_stride=1,
-        exist_ok=True,
-    )
+    output_dir.mkdir(parents=True, exist_ok=True)
+    out_path = output_dir / "annotated.mp4"
 
-
-    
-    print(f"[INFO] Yolo save_dir reported: {results[0].save_dir}")
-    print(f"[INFO] Using job_dir : {job_dir}")
-
-    # check for any mp4 or avi files from yolo
-    mp4_files = list(job_dir.glob("*.mp4"))
-    avi_files = list(job_dir.glob("*.avi"))
-
-    if mp4_files:
-        # yolo already wrote an mp4, just return it but this rarely happens if at all
-        return mp4_files[0]
-
-    #if it cant find avi or mp4 so no video was created and give an error
-    if not avi_files:
-        raise RuntimeError(f"No output video found in {job_dir}")
-
-    avi_path = avi_files[0] #takes the list and gets the first one
-    mp4_path = job_dir / "output_fixed.mp4" #builds path for new file.
-    convert_avi_to_mp4(avi_path, mp4_path) #calls the conversion for avi to mp4
-    return mp4_path #returns the path to the mp4
-
-
-def convert_avi_to_mp4(input_path: Path, output_path: Path): #conver function, uses where the avi is stored and where we want to store the mp4
-    cap = cv2.VideoCapture(str(input_path)) #opens video to read frame by frame, converts the path into a string
+    cap = cv2.VideoCapture(str(input_video))
     if not cap.isOpened():
-        raise IOError(f"Could not open input video: {input_path}")#if it cant open the video, returns a error
+        raise IOError(f"Could not open video: {input_video}")
 
-    fps = cap.get(cv2.CAP_PROP_FPS) or 24.0 #read fps if cant, set it to 24fps
-    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)) #get width of video
-    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)) #get height of video
+    fps = cap.get(cv2.CAP_PROP_FPS) or 24.0
+    w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
-    fourcc = cv2.VideoWriter_fourcc(*"avc1") #avc1 = h.264 codec, most compatiable with mp4 encoding, vidwriter turns it into a usable id
-    out = cv2.VideoWriter(str(output_path), fourcc, fps, (width, height)) #tells opencv where to save mp4, which codec, video fps, resolution, out= object that writes each frame
+    out = None
+    for fourcc_str in ("avc1", "H264", "X264", "mp4v"):
+        fourcc = cv2.VideoWriter_fourcc(*fourcc_str)
+        out = cv2.VideoWriter(str(out_path), fourcc, fps, (w, h))
+        if out.isOpened():
+            break
+    if out is None or not out.isOpened():
+        raise RuntimeError("Could not open VideoWriter")
 
-    while True: #read->write loop, true if it reds frame
+    spots_poly: List[Tuple[str, np.ndarray]] = []
+    for s in spots_doc.get("spots", []):
+        sid = s.get("id", "")
+        poly = s.get("polygon", [])
+        if sid and len(poly) >= 3:
+            spots_poly.append((sid, _norm_poly_to_px(poly, w, h)))
+
+    last_available = 0
+    last_occupied = 0
+
+    frame_i = 0
+    while True:
         ret, frame = cap.read()
-        if not ret:#if it's false, no more frames, exit loop
-            break 
-        out.write(frame)#otherwise write the frame into mp4 video
+        if not ret:
+            break
 
-    cap.release()#closes and finaliases video file
-    out.release()#..^
-    print(f"[INFO] saved mp4 to {output_path}")#shows where it's saved
+        r = yolo_model.predict(frame, conf=conf, verbose=False)[0]
+
+        points = []
+        boxes = []
+        if r.boxes is not None and len(r.boxes) > 0:
+            xyxy = r.boxes.xyxy.cpu().numpy()
+            cls = r.boxes.cls.cpu().numpy().astype(int) if r.boxes.cls is not None else None
+
+            for i, (x1, y1, x2, y2) in enumerate(xyxy):
+                class_id = int(cls[i]) if cls is not None else None
+                if vehicle_class_ids is not None and class_id is not None:
+                    if class_id not in vehicle_class_ids:
+                        continue
+                if vehicle_class_ids is None and class_id is not None:
+                    if class_id not in {2, 3, 5, 7}:
+                        continue
+                points.append(_bottom_center(x1, y1, x2, y2))
+                boxes.append((int(x1), int(y1), int(x2), int(y2), class_id))
+
+        for x1, y1, x2, y2, class_id in boxes:
+            cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 255, 0), 2)
+            if class_id is not None and hasattr(r, "names") and isinstance(r.names, dict):
+                name = r.names.get(class_id, str(class_id))
+                cv2.putText(
+                    frame,
+                    name,
+                    (x1, max(0, y1 - 8)),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.6,
+                    (255, 255, 0),
+                    2,
+                    cv2.LINE_AA,
+                )
+
+        occupied_count = 0
+        available_count = 0
+
+        for sid, poly_np in spots_poly:
+            occupied = False
+            for px, py in points:
+                if _is_point_in_poly(px, py, poly_np):
+                    occupied = True
+                    break
+
+            color = (0, 0, 255) if occupied else (0, 255, 0)
+            cv2.polylines(frame, [poly_np], True, color, 2)
+
+            x0, y0 = int(poly_np[0][0][0]), int(poly_np[0][0][1])
+            cv2.putText(
+                frame,
+                sid,
+                (x0 + 6, y0 - 6),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.6,
+                color,
+                2,
+                cv2.LINE_AA,
+            )
+
+            if occupied:
+                occupied_count += 1
+            else:
+                available_count += 1
+
+        last_available = available_count
+        last_occupied = occupied_count
+
+        cv2.putText(
+            frame,
+            f"Available: {available_count}  Occupied: {occupied_count}",
+            (20, 30),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.9,
+            (255, 255, 255),
+            2,
+            cv2.LINE_AA,
+        )
+
+        out.write(frame)
+
+        frame_i += 1
+        if frame_i % 30 == 0:
+            print(f"inference frames={frame_i} available={available_count} occupied={occupied_count}")
+
+    cap.release()
+    out.release()
+
+    return out_path, last_available, last_occupied
