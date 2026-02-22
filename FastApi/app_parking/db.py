@@ -18,8 +18,8 @@ async def connect_mongo() -> None:
         db = _client[MONGO_DB]
         await db.jobs.create_index("status")
         await db.jobs.create_index("created_at")
-        await db.spot_config.create_index([("camera_id", 1), ("status", 1)])
-        await db.spot_config.create_index([("camera_id", 1), ("version", -1)])
+        await db.spot_configs.create_index([("camera_id", 1), ("status", 1)])
+        await db.spot_configs.create_index([("camera_id", 1), ("version", -1)])
 
 async def close_mongo() -> None:
     global _client

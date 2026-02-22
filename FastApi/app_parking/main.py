@@ -1,33 +1,39 @@
 from contextlib import asynccontextmanager
 from pathlib import Path
+from uuid import uuid4
+from datetime import datetime
 import shutil
 
-from fastapi import FastAPI, UploadFile, File, HTTPException, status
+import cv2
+from fastapi import FastAPI, UploadFile, File, HTTPException, status, Depends, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
+from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from .config import UPLOAD_DIR, OUTPUT_DIR
-from .yolo_service import load_yolo_model, run_yolo_on_video
-
-# simple in-memory counter for jobs
-job_counter = 0
+from .db import connect_mongo, close_mongo, get_db
+from .spots_routes import router as spots_router
+from .yolo_service import load_yolo_model, run_inference_with_spots
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # startup
+    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     load_yolo_model()
+    await connect_mongo()
     yield
-    # shutdown (nothing yet)
+    await close_mongo()
 
 
 app = FastAPI(
     title="Parking Detector API",
-    description="Simple API: upload a video, run YOLO, then fetch processed video.",
+    description="Upload a video, draw spots, then run inference.",
     lifespan=lifespan,
 )
 
-# CORS similar style to your class app
+app.include_router(spots_router)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -42,57 +48,151 @@ def health():
 
 
 @app.post("/api/videos", status_code=status.HTTP_201_CREATED)
-async def upload_video(file: UploadFile = File(...)): #... to make sure a file is uploaded
-    global job_counter
-    job_counter += 1
-    job_id = job_counter
+async def upload_video(
+    file: UploadFile = File(...),
+    camera_id: str = Form("cam1"),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    job_id = str(uuid4())
 
     if not file.filename:
         raise HTTPException(status_code=400, detail="no file uploaded")
 
-    if not file.content_type.startswith("video"): #checks if the file is a video
+    if not file.content_type or not file.content_type.startswith("video"):
         raise HTTPException(status_code=400, detail="file must be a video")
 
-    # save uploaded file as "<job_id>.mp4"
-    upload_path = UPLOAD_DIR / f"{job_id}.mp4"
+    ext = Path(file.filename).suffix.lower() or ".mp4"
+    upload_path = UPLOAD_DIR / f"{job_id}{ext}"
 
-    with upload_path.open("wb") as buffer: #w=wrtie mode b=binary mode needed for videos and stuff
-        shutil.copyfileobj(file.file, buffer) #take the video uploaded, copy it's raw bytes, store it locally on disk
+    with upload_path.open("wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
 
-    try:
-        output_mp4 = run_yolo_on_video(upload_path, str(job_id))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"error running yolo: {e}")
+    job_dir = OUTPUT_DIR / job_id
+    job_dir.mkdir(parents=True, exist_ok=True)
 
-    return {
-        "job_id": job_id,
-        "output_file": output_mp4.name,
-        "message": f"upload complete, call GET /api/videos/{job_id} to fetch result",
-    }
-
-
-
-# 2) get processed video
-@app.get("/api/videos/{job_id}", response_class=FileResponse) #not returning json, returning a file
-async def get_video(job_id: int): #gets the video by the correlating id
-    job_dir = OUTPUT_DIR / str(job_id) #will make a folder for every job, so it doesnt get confusing
-    video_path = job_dir / "output_fixed.mp4" #creates the expected file path
-
-    if not video_path.exists(): #does the video actually exists, name might be wrong
-        mp4_list = list(job_dir.glob("*.mp4"))# so we actually look for any mp4 there
-        #if no mp4 for whatever reason, we inform the user
-        if not mp4_list:
-            raise HTTPException(status_code=404, detail="processed video not found")
-        video_path = mp4_list[0] #if there is one .mp4 use the most recent/first one as the output video.
-
-    #sends us back the actual video
-    return FileResponse(
-        path=str(video_path), #where it is on disc
-        media_type="video/mp4", #tell the browser it's a video
-        headers={"Content-Disposition": f'inline; filename="{video_path.name}"'},  #changes the name of the download file
+    await db.jobs.insert_one(
+        {
+            "_id": job_id,
+            "camera_id": camera_id,
+            "status": "uploaded",
+            "created_at": datetime.utcnow(),
+            "input_path": str(upload_path),
+            "output_file": None,
+            "snapshot_file": None,
+            "available": None,
+            "occupied": None,
+            "error": None,
+        }
     )
 
+    return {"job_id": job_id, "camera_id": camera_id}
 
-#add photo option
 
-#add live stream (main one I want to use)
+@app.get("/api/jobs/{job_id}")
+async def job_status(job_id: str, db: AsyncIOMotorDatabase = Depends(get_db)):
+    job = await db.jobs.find_one({"_id": job_id})
+    if not job:
+        raise HTTPException(status_code=404, detail="job not found")
+    job["_id"] = str(job["_id"])
+    return job
+
+
+@app.get("/api/jobs/{job_id}/snapshot")
+async def job_snapshot(job_id: str, db: AsyncIOMotorDatabase = Depends(get_db)):
+    job = await db.jobs.find_one({"_id": job_id})
+    if not job:
+        raise HTTPException(status_code=404, detail="job not found")
+
+    job_dir = OUTPUT_DIR / job_id
+    snap_path = job_dir / "snapshot.jpg"
+
+    if not snap_path.exists():
+        input_path = job.get("input_path")
+        if not input_path:
+            raise HTTPException(status_code=500, detail="job missing input_path")
+
+        cap = cv2.VideoCapture(str(input_path))
+        ok, frame = cap.read()
+        cap.release()
+        if not ok:
+            raise HTTPException(status_code=500, detail="could not read video frame")
+
+        cv2.imwrite(str(snap_path), frame)
+
+        await db.jobs.update_one(
+            {"_id": job_id},
+            {"$set": {"snapshot_file": str(snap_path.name)}},
+        )
+
+    return FileResponse(str(snap_path), media_type="image/jpeg", filename="snapshot.jpg")
+
+
+@app.post("/api/jobs/{job_id}/run")
+async def run_job(job_id: str, db: AsyncIOMotorDatabase = Depends(get_db)):
+    job = await db.jobs.find_one({"_id": job_id})
+    if not job:
+        raise HTTPException(status_code=404, detail="job not found")
+
+    if job.get("status") == "processing":
+        return {"job_id": job_id, "status": "processing"}
+
+    input_path = job.get("input_path")
+    camera_id = job.get("camera_id")
+    if not input_path or not camera_id:
+        raise HTTPException(status_code=500, detail="job missing input_path or camera_id")
+
+    spots_doc = await db.spot_configs.find_one(
+        {"camera_id": camera_id, "status": "published"},
+        sort=[("version", -1)],
+    )
+    if not spots_doc:
+        raise HTTPException(status_code=400, detail="no published spot config for this camera_id")
+
+    await db.jobs.update_one({"_id": job_id}, {"$set": {"status": "processing", "error": None}})
+
+    try:
+        job_dir = OUTPUT_DIR / job_id
+        out_path, available, occupied = run_inference_with_spots(
+            input_video=Path(input_path),
+            output_dir=job_dir,
+            spots_doc=spots_doc,
+        )
+
+        await db.jobs.update_one(
+            {"_id": job_id},
+            {"$set": {
+                "status": "done",
+                "output_file": out_path.name,
+                "available": int(available),
+                "occupied": int(occupied),
+            }},
+        )
+        return {"job_id": job_id, "status": "done", "output_file": out_path.name, "available": available, "occupied": occupied}
+
+    except Exception as e:
+        await db.jobs.update_one(
+            {"_id": job_id},
+            {"$set": {"status": "failed", "error": str(e)}},
+        )
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/videos/{job_id}", response_class=FileResponse)
+async def get_video(job_id: str, db: AsyncIOMotorDatabase = Depends(get_db)):
+    job = await db.jobs.find_one({"_id": job_id})
+    if not job:
+        raise HTTPException(status_code=404, detail="job not found")
+
+    if job.get("status") != "done" or not job.get("output_file"):
+        raise HTTPException(status_code=409, detail=f"video not ready (status={job.get('status')})")
+
+    video_path = (OUTPUT_DIR / job_id) / job["output_file"]
+    if not video_path.exists():
+        raise HTTPException(status_code=500, detail="output file missing on disk")
+
+    return FileResponse(
+        str(video_path),
+        media_type="video/mp4",
+        filename=video_path.name,
+        headers={"Content-Disposition": f'inline; filename="{video_path.name}"'},
+    )

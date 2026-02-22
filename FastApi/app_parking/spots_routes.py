@@ -17,13 +17,15 @@ async def save_spots_config(
     if payload.get("camera_id") != camera_id:
         raise HTTPException(status_code=400, detail="Camera ID in URL and payload do not match.")
     
+
     latest = await db.spot_config.find_one({"camera_id": camera_id}, sort=[("version", -1)])
-    next_version = (latest["version"] + 1) if latest else int(latest["version"]) + 1
+    next_version = int(latest["version"]) + 1 if latest else 1
+
 
     status = "published" if publish else "draft"
 
     if publish:
-        await db.spot_config.update_many(
+        await db.spot_configs.update_many(
             {"camera_id": camera_id, "status": "published"},
             {"$set": {"status": "draft"}}
         )
@@ -36,7 +38,7 @@ async def save_spots_config(
         "created_at": datetime.utcnow()
     }
 
-    await db.spot_config.insert_one(doc)
+    await db.spot_configs.insert_one(doc)
     return {"camera_id": camera_id, "version": next_version, "status": status}
 
 
@@ -46,7 +48,7 @@ async def get_published_spots_config(
     camera_id: str,
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
-    doc = await db.spot_config.find_one(
+    doc = await db.spot_configs.find_one(
         {"camera_id": camera_id, "status": "published"},
         sort=[("version", -1)]
     )
@@ -62,7 +64,7 @@ async def get_spots_history(
     camera_id:str,
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
-    cursor = db.spot_config.find({"camera_id": camera_id}).sort("version", -1).limit(25)
+    cursor = db.spot_configs.find({"camera_id": camera_id}).sort("version", -1).limit(25)
     items = []
     async for d in cursor:
         d["_id"] = str(d["_id"])
