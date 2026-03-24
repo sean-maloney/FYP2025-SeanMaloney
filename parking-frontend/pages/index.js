@@ -1,24 +1,80 @@
-import Link from "next/link" //imports next.js's built in link component that lets you navigate between pages without reloading
-import classes from "../styles/Home.module.css"; //imports styling classes becomes a object where each key is a css class name scoped only to the component
+import Link from "next/link";
 
-function HomePage(){ //declares a function name HopePage (component)
-    return( //begins the jsx returned by the componennt (whatever gets rendered on screen)
-        <div className = {classes.container}> {/*renders a div and applied container css class from css module*/}
-            <h1>Parking Detector</h1> {/*Displays a large page title*/}
-            <p className={classes.text}> {/*Renders a paragraph within text css class*/}
-                Simple Demo: just upload a parking lot video, the view the video ran through inference
-            </p> {/*end paragraph*/}
+export default function HomePage() {
+  const buttonStyle = {
+    background: "white",
+    color: "black",
+    border: "1px solid black",
+    borderRadius: 8,
+    padding: "6px 12px",
+    cursor: "pointer",
+    fontSize: 14,
+  };
 
-            <div className={classes.buttons}> {/*A wrapper div for the two buttons*/}
-                <Link href="/upload"> {/*creates a link to the /upload page but without page reload*/}
-                    <button className={classes.btn}>Upload Video</button> {/*Render styled button, sends user to upload page*/}
-                </Link> {/*Close link*/}
-                <Link href="/view/1"> {/*creates a link to /view/1*/}
-                    <button className = {classes.btnSecondary}>View Output (example)</button> {/*renders another button with secondary style varaiant*/}
-                </Link>{/*Closes the link*/}
-            </div>
+  const primaryButtonStyle = {
+    ...buttonStyle,
+    background: "black",
+    color: "white",
+    fontWeight: "bold",
+  };
+
+  return (
+    <div
+      style={{
+        minHeight: "100vh",
+        background: "#e9e9e9",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        fontFamily: "Arial, sans-serif",
+      }}
+    >
+      <div
+        style={{
+          background: "white",
+          padding: 30,
+          borderRadius: 12,
+          boxShadow: "0 4px 12px rgba(0,0,0,0.12)",
+          textAlign: "center",
+          minWidth: 340,
+        }}
+      >
+        <h1
+          style={{
+            marginTop: 0,
+            marginBottom: 20,
+            fontSize: 30,
+            fontWeight: "bold",
+          }}
+        >
+          Parking Detector
+        </h1>
+
+        <div
+          style={{
+            display: "flex",
+            gap: 10,
+            justifyContent: "center",
+            flexWrap: "wrap",
+          }}
+        >
+          <Link href="/upload">
+            <button style={primaryButtonStyle}>Upload Video</button>
+          </Link>
+
+          <Link href="/view/jobold">
+            <button style={buttonStyle}>View Output (example)</button>
+          </Link>
+
+          <Link href="/camera-monitor">
+            <button style={buttonStyle}>Live Camera Monitor</button>
+          </Link>
+
+          <Link href="/pathfinder">
+            <button style={buttonStyle}>Pathfinder</button>
+          </Link>
         </div>
-    );
-}//closes the button divs and main container div and the return statement
-
-export default HomePage; //makes homepage component available for import elsewhere.
+      </div>
+    </div>
+  );
+}

@@ -6,7 +6,6 @@ from .db import get_db
 router = APIRouter(prefix="/api/cameras", tags=["spots"])
 
 
-
 @router.post("/{camera_id}/spots")
 async def save_spots_config(
     camera_id: str,
@@ -16,11 +15,15 @@ async def save_spots_config(
 ):
     if payload.get("camera_id") != camera_id:
         raise HTTPException(status_code=400, detail="Camera ID in URL and payload do not match.")
-    
 
-    latest = await db.spot_config.find_one({"camera_id": camera_id}, sort=[("version", -1)])
-    next_version = int(latest["version"]) + 1 if latest else 1
+    spots = payload.get("spots", [])
+    for s in spots:
+        s.setdefault("type", "parking")
+        s.setdefault("description", "")
+    payload["spots"] = spots
 
+    latest = await db.spot_configs.find_one({"camera_id": camera_id}, sort=[("version", -1)])
+    next_version = 1 if not latest else int(latest["version"]) + 1
 
     status = "published" if publish else "draft"
 
@@ -29,7 +32,7 @@ async def save_spots_config(
             {"camera_id": camera_id, "status": "published"},
             {"$set": {"status": "draft"}}
         )
-    
+
     doc = {
         **payload,
         "camera_id": camera_id,
@@ -40,7 +43,6 @@ async def save_spots_config(
 
     await db.spot_configs.insert_one(doc)
     return {"camera_id": camera_id, "version": next_version, "status": status}
-
 
 
 @router.get("/{camera_id}/spots/published")
@@ -58,10 +60,9 @@ async def get_published_spots_config(
     return doc
 
 
-
 @router.get("/{camera_id}/spots/history")
 async def get_spots_history(
-    camera_id:str,
+    camera_id: str,
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     cursor = db.spot_configs.find({"camera_id": camera_id}).sort("version", -1).limit(25)

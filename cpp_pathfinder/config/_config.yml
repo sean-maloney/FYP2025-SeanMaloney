@@ -1,0 +1,9 @@
+# Site settings
+title: A* Algorithm
+author:
+  name: Sean Maloney
+  email: g00420811@atu.ie
+description: "A blog."
+
+# Build settings
+remote_theme: jekyll/minima

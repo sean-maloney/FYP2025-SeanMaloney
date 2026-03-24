@@ -10,9 +10,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
-from .config import UPLOAD_DIR, OUTPUT_DIR
+from .config import UPLOAD_DIR, OUTPUT_DIR, CAPTURE_DIR
 from .db import connect_mongo, close_mongo, get_db
 from .spots_routes import router as spots_router
+from .capture_routes import router as capture_router
+from .pathfinder_routes import router as pathfinder_router
 from .yolo_service import load_yolo_model, run_inference_with_spots
 
 
@@ -20,6 +22,7 @@ from .yolo_service import load_yolo_model, run_inference_with_spots
 async def lifespan(app: FastAPI):
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    CAPTURE_DIR.mkdir(parents=True, exist_ok=True)
     load_yolo_model()
     await connect_mongo()
     yield
@@ -33,6 +36,8 @@ app = FastAPI(
 )
 
 app.include_router(spots_router)
+app.include_router(capture_router)
+app.include_router(pathfinder_router)
 
 app.add_middleware(
     CORSMiddleware,
@@ -167,7 +172,13 @@ async def run_job(job_id: str, db: AsyncIOMotorDatabase = Depends(get_db)):
                 "occupied": int(occupied),
             }},
         )
-        return {"job_id": job_id, "status": "done", "output_file": out_path.name, "available": available, "occupied": occupied}
+        return {
+            "job_id": job_id,
+            "status": "done",
+            "output_file": out_path.name,
+            "available": available,
+            "occupied": occupied,
+        }
 
     except Exception as e:
         await db.jobs.update_one(
