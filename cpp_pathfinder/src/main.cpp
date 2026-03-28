@@ -6,9 +6,6 @@
 
 int main(int argc, char* argv[])
 {
-    // expected usage:
-    // AStarProject.exe input.txt output.txt
-
     if (argc < 3)
     {
         std::cerr << "Usage: AStarProject <input_file> <output_file>\n";

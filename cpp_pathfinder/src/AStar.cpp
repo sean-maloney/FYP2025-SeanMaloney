@@ -22,7 +22,6 @@ struct CompareNodes
 
 static int getHeuristic(Point a, Point b)
 {
-    // keeping it simple here, just Manhattan distance
     return std::abs(a.row - b.row) + std::abs(a.col - b.col);
 }
 
@@ -100,7 +99,6 @@ std::vector<Point> runAStar(
 
             if (grid[nextRow][nextCol] == 1)
             {
-                // 1 means blocked
                 continue;
             }
 
