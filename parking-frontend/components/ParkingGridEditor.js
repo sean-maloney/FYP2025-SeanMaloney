@@ -5,7 +5,7 @@ const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000"
 
 const colours = {
   empty: "rgba(0,0,0,0)",
-  road: "rgba(34, 197, 94, 0.25)",
+  road: "rgba(34, 197, 94, 0.20)",
   blocked: "rgba(239, 68, 68, 0.35)",
   start: "rgba(59, 130, 246, 0.35)",
   parking: "rgba(234, 179, 8, 0.35)",
@@ -23,6 +23,7 @@ export default function ParkingGridEditor() {
   const [goal, setGoal] = useState("");
   const [path, setPath] = useState([]);
   const [selectedGoal, setSelectedGoal] = useState(null);
+  const [statusMessage, setStatusMessage] = useState("No route generated yet.");
 
   const [grid, setGrid] = useState(
     Array.from({ length: 12 }, () => Array.from({ length: 16 }, () => "empty"))
@@ -31,6 +32,7 @@ export default function ParkingGridEditor() {
   useEffect(() => {
     const img = new Image();
     img.src = "/parking-layout.png";
+
     img.onload = () => {
       imageRef.current = img;
       drawCanvas(grid, [], null);
@@ -40,6 +42,17 @@ export default function ParkingGridEditor() {
   useEffect(() => {
     drawCanvas(grid, path, selectedGoal);
   }, [grid, showGrid, path, selectedGoal]);
+
+  function getStartCell(currentGrid) {
+    for (let row = 0; row < rows; row++) {
+      for (let col = 0; col < cols; col++) {
+        if (currentGrid[row][col] === "start") {
+          return [row, col];
+        }
+      }
+    }
+    return null;
+  }
 
   function drawCanvas(currentGrid, currentPath, currentGoal) {
     const canvas = canvasRef.current;
@@ -59,6 +72,7 @@ export default function ParkingGridEditor() {
           const y = row * CELL_SIZE;
 
           ctx.strokeStyle = "#111827";
+          ctx.lineWidth = 1;
           ctx.strokeRect(x, y, CELL_SIZE, CELL_SIZE);
 
           const cellType = currentGrid[row][col];
@@ -70,18 +84,31 @@ export default function ParkingGridEditor() {
       }
     }
 
+    const startCell = getStartCell(currentGrid);
+    if (startCell) {
+      const startX = startCell[1] * CELL_SIZE;
+      const startY = startCell[0] * CELL_SIZE;
+
+      ctx.strokeStyle = "#1d4ed8";
+      ctx.lineWidth = 3;
+      ctx.strokeRect(startX + 3, startY + 3, CELL_SIZE - 6, CELL_SIZE - 6);
+    }
+
     if (currentGoal && currentGoal.length === 2) {
       const goalX = currentGoal[1] * CELL_SIZE;
       const goalY = currentGoal[0] * CELL_SIZE;
-      ctx.strokeStyle = "#1d4ed8";
+
+      ctx.strokeStyle = "#7c3aed";
       ctx.lineWidth = 3;
-      ctx.strokeRect(goalX + 2, goalY + 2, CELL_SIZE - 4, CELL_SIZE - 4);
+      ctx.strokeRect(goalX + 3, goalY + 3, CELL_SIZE - 6, CELL_SIZE - 6);
     }
 
     if (currentPath.length > 0) {
       ctx.beginPath();
       ctx.strokeStyle = "#2563eb";
       ctx.lineWidth = 4;
+      ctx.lineJoin = "round";
+      ctx.lineCap = "round";
 
       currentPath.forEach((cell, index) => {
         const x = cell[1] * CELL_SIZE + CELL_SIZE / 2;
@@ -95,6 +122,23 @@ export default function ParkingGridEditor() {
       });
 
       ctx.stroke();
+
+      currentPath.forEach((cell, index) => {
+        const x = cell[1] * CELL_SIZE + CELL_SIZE / 2;
+        const y = cell[0] * CELL_SIZE + CELL_SIZE / 2;
+
+        if (index === 0) {
+          ctx.fillStyle = "#1d4ed8";
+        } else if (index === currentPath.length - 1) {
+          ctx.fillStyle = "#7c3aed";
+        } else {
+          ctx.fillStyle = "#2563eb";
+        }
+
+        ctx.beginPath();
+        ctx.arc(x, y, 4, 0, Math.PI * 2);
+        ctx.fill();
+      });
     }
   }
 
@@ -175,6 +219,7 @@ export default function ParkingGridEditor() {
     });
 
     const data = await response.json();
+    setStatusMessage(data.message || "Grid saved.");
     alert(data.message || "saved");
   }
 
@@ -207,6 +252,7 @@ export default function ParkingGridEditor() {
     setGrid(rebuilt);
     setPath([]);
     setSelectedGoal(null);
+    setStatusMessage("Grid loaded.");
   }
 
   async function runPathfinder() {
@@ -242,11 +288,13 @@ export default function ParkingGridEditor() {
       alert(data.message || "no path found");
       setPath([]);
       setSelectedGoal(null);
+      setStatusMessage(data.message || "No path found.");
       return;
     }
 
     setPath(data.path);
     setSelectedGoal([goalRow, goalCol]);
+    setStatusMessage(`Path overlay drawn to goal (${goalRow}, ${goalCol}).`);
   }
 
   async function routeNearestAvailable() {
@@ -270,17 +318,25 @@ export default function ParkingGridEditor() {
       alert(data.message || "could not route to nearest available space");
       setPath([]);
       setSelectedGoal(null);
+      setStatusMessage(data.message || "Nearest available route failed.");
       return;
     }
 
     setPath(data.path || []);
     setSelectedGoal(data.goal || null);
+
+    if (data.goal && data.goal.length === 2) {
+      setStatusMessage(`Path overlay drawn to nearest available space at (${data.goal[0]}, ${data.goal[1]}).`);
+    } else {
+      setStatusMessage("Nearest available route drawn.");
+    }
   }
 
   function clearGrid() {
     setGrid(Array.from({ length: rows }, () => Array.from({ length: cols }, () => "empty")));
     setPath([]);
     setSelectedGoal(null);
+    setStatusMessage("Grid cleared.");
   }
 
   return (
@@ -320,11 +376,32 @@ export default function ParkingGridEditor() {
         <button onClick={routeNearestAvailable}>Route Nearest Available</button>
       </div>
 
-      <canvas
-        ref={canvasRef}
-        onClick={handleCanvasClick}
-        style={{ border: "1px solid #ccc", cursor: "pointer", maxWidth: "100%" }}
-      />
+      <div style={{ marginBottom: "10px", fontSize: "14px" }}>
+        <strong>Status:</strong> {statusMessage}
+      </div>
+
+      <div style={{ display: "flex", gap: "16px", alignItems: "flex-start", flexWrap: "wrap" }}>
+        <canvas
+          ref={canvasRef}
+          onClick={handleCanvasClick}
+          style={{
+            border: "1px solid #ccc",
+            cursor: "pointer",
+            maxWidth: "100%",
+            background: "#fff",
+          }}
+        />
+
+        <div style={{ fontSize: "14px", minWidth: "180px" }}>
+          <div style={{ marginBottom: "8px" }}><strong>Overlay Legend</strong></div>
+          <div style={{ marginBottom: "6px" }}>Blue line = A* path</div>
+          <div style={{ marginBottom: "6px" }}>Blue box = start cell</div>
+          <div style={{ marginBottom: "6px" }}>Purple box = goal cell</div>
+          <div style={{ marginBottom: "6px" }}>Red fill = blocked cell</div>
+          <div style={{ marginBottom: "6px" }}>Yellow fill = parking cell</div>
+          <div style={{ marginBottom: "6px" }}>Green fill = road cell</div>
+        </div>
+      </div>
     </div>
   );
 }
