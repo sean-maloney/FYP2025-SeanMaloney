@@ -24,6 +24,7 @@ export default function ParkingGridEditor() {
   const [path, setPath] = useState([]);
   const [selectedGoal, setSelectedGoal] = useState(null);
   const [statusMessage, setStatusMessage] = useState("No route generated yet.");
+  const [errorMessage, setErrorMessage] = useState("");
 
   const [grid, setGrid] = useState(
     Array.from({ length: 12 }, () => Array.from({ length: 16 }, () => "empty"))
@@ -168,6 +169,7 @@ export default function ParkingGridEditor() {
 
     nextGrid[row][col] = selectedTool;
     setGrid(nextGrid);
+    setErrorMessage("");
   }
 
   function buildPayload() {
@@ -209,7 +211,14 @@ export default function ParkingGridEditor() {
     };
   }
 
+  function resetPathState() {
+    setPath([]);
+    setSelectedGoal(null);
+  }
+
   async function saveGrid() {
+    setErrorMessage("");
+
     const response = await fetch(`${API_BASE}/api/pathfinder/grid/save`, {
       method: "POST",
       headers: {
@@ -219,18 +228,28 @@ export default function ParkingGridEditor() {
     });
 
     const data = await response.json();
-    setStatusMessage(data.message || "Grid saved.");
-    alert(data.message || "saved");
-  }
 
-  async function loadGrid() {
-    const response = await fetch(`${API_BASE}/api/pathfinder/grid/${cameraId}`);
     if (!response.ok) {
-      alert("could not load grid");
+      setErrorMessage(data.detail || "Could not save grid.");
+      setStatusMessage("Save failed.");
       return;
     }
 
+    setStatusMessage(data.message || "Grid saved.");
+  }
+
+  async function loadGrid() {
+    setErrorMessage("");
+
+    const response = await fetch(`${API_BASE}/api/pathfinder/grid/${cameraId}`);
     const data = await response.json();
+
+    if (!response.ok) {
+      setErrorMessage(data.detail || "Could not load grid.");
+      setStatusMessage("Load failed.");
+      return;
+    }
+
     const rebuilt = Array.from({ length: data.rows }, () =>
       Array.from({ length: data.cols }, () => "road")
     );
@@ -250,24 +269,33 @@ export default function ParkingGridEditor() {
     }
 
     setGrid(rebuilt);
-    setPath([]);
-    setSelectedGoal(null);
+    resetPathState();
     setStatusMessage("Grid loaded.");
   }
 
   async function runPathfinder() {
+    setErrorMessage("");
+
     const bits = goal.split(",").map((x) => x.trim());
     if (bits.length !== 2) {
-      alert("enter goal as row,col for example 5,7");
+      setErrorMessage("Enter goal as row,col for example 5,7.");
+      resetPathState();
       return;
     }
 
     const goalRow = Number(bits[0]);
     const goalCol = Number(bits[1]);
 
+    if (Number.isNaN(goalRow) || Number.isNaN(goalCol)) {
+      setErrorMessage("Goal row and column must both be numbers.");
+      resetPathState();
+      return;
+    }
+
     const start = buildPayload().start;
     if (!start || start.length !== 2) {
-      alert("please set a start cell first");
+      setErrorMessage("Please set a start cell first.");
+      resetPathState();
       return;
     }
 
@@ -284,11 +312,10 @@ export default function ParkingGridEditor() {
 
     const data = await response.json();
 
-    if (!data.success) {
-      alert(data.message || "no path found");
-      setPath([]);
-      setSelectedGoal(null);
-      setStatusMessage(data.message || "No path found.");
+    if (!response.ok || !data.success) {
+      setErrorMessage(data.detail || data.message || "No path found.");
+      resetPathState();
+      setStatusMessage("Path generation failed.");
       return;
     }
 
@@ -298,9 +325,12 @@ export default function ParkingGridEditor() {
   }
 
   async function routeNearestAvailable() {
+    setErrorMessage("");
+
     const start = buildPayload().start;
     if (!start || start.length !== 2) {
-      alert("please set a start cell first");
+      setErrorMessage("Please set a start cell first.");
+      resetPathState();
       return;
     }
 
@@ -314,11 +344,10 @@ export default function ParkingGridEditor() {
 
     const data = await response.json();
 
-    if (!data.success) {
-      alert(data.message || "could not route to nearest available space");
-      setPath([]);
-      setSelectedGoal(null);
-      setStatusMessage(data.message || "Nearest available route failed.");
+    if (!response.ok || !data.success) {
+      setErrorMessage(data.detail || data.message || "Could not route to nearest available space.");
+      resetPathState();
+      setStatusMessage("Nearest available route failed.");
       return;
     }
 
@@ -334,8 +363,8 @@ export default function ParkingGridEditor() {
 
   function clearGrid() {
     setGrid(Array.from({ length: rows }, () => Array.from({ length: cols }, () => "empty")));
-    setPath([]);
-    setSelectedGoal(null);
+    resetPathState();
+    setErrorMessage("");
     setStatusMessage("Grid cleared.");
   }
 
@@ -376,9 +405,26 @@ export default function ParkingGridEditor() {
         <button onClick={routeNearestAvailable}>Route Nearest Available</button>
       </div>
 
-      <div style={{ marginBottom: "10px", fontSize: "14px" }}>
+      <div style={{ marginBottom: "8px", fontSize: "14px" }}>
         <strong>Status:</strong> {statusMessage}
       </div>
+
+      {errorMessage ? (
+        <div
+          style={{
+            marginBottom: "12px",
+            padding: "10px 12px",
+            border: "1px solid #ef4444",
+            background: "#fef2f2",
+            color: "#b91c1c",
+            borderRadius: 8,
+            fontSize: "14px",
+            maxWidth: "700px",
+          }}
+        >
+          <strong>Error:</strong> {errorMessage}
+        </div>
+      ) : null}
 
       <div style={{ display: "flex", gap: "16px", alignItems: "flex-start", flexWrap: "wrap" }}>
         <canvas
@@ -392,7 +438,7 @@ export default function ParkingGridEditor() {
           }}
         />
 
-        <div style={{ fontSize: "14px", minWidth: "180px" }}>
+        <div style={{ fontSize: "14px", minWidth: "220px" }}>
           <div style={{ marginBottom: "8px" }}><strong>Overlay Legend</strong></div>
           <div style={{ marginBottom: "6px" }}>Blue line = A* path</div>
           <div style={{ marginBottom: "6px" }}>Blue box = start cell</div>

@@ -15,27 +15,43 @@ def write_astar_input_file(file_path, rows, cols, start, goal, grid):
 
 def read_astar_output_file(file_path):
     if not file_path.exists():
-        return {"success": False, "path": [], "message": "output file missing"}
+        return {"success": False, "path": [], "message": "Pathfinder output file was not created."}
 
     lines = [line.strip() for line in file_path.read_text(encoding="utf-8").splitlines() if line.strip()]
 
     if not lines:
-        return {"success": False, "path": [], "message": "output file empty"}
+        return {"success": False, "path": [], "message": "Pathfinder output file was empty."}
 
     if lines[0] == "NO_PATH":
-        return {"success": False, "path": [], "message": "no path found"}
+        return {"success": False, "path": [], "message": "No valid path could be found."}
 
     if lines[0] != "PATH_FOUND":
-        return {"success": False, "path": [], "message": "unexpected output format"}
+        return {"success": False, "path": [], "message": "Unexpected output format returned by C++ pathfinder."}
 
-    path_count = int(lines[1])
+    if len(lines) < 2:
+        return {"success": False, "path": [], "message": "Output file was missing the path length."}
+
+    try:
+        path_count = int(lines[1])
+    except ValueError:
+        return {"success": False, "path": [], "message": "Path length in output file was invalid."}
+
     path = []
 
     for i in range(path_count):
-        row, col = map(int, lines[i + 2].split())
+        line_index = i + 2
+
+        if line_index >= len(lines):
+            return {"success": False, "path": [], "message": "Output file ended before the full path was read."}
+
+        try:
+            row, col = map(int, lines[line_index].split())
+        except ValueError:
+            return {"success": False, "path": [], "message": "A path coordinate in the output file was invalid."}
+
         path.append([row, col])
 
-    return {"success": True, "path": path, "message": "path found"}
+    return {"success": True, "path": path, "message": "Path found successfully."}
 
 
 def run_astar_process(camera_id, rows, cols, start, goal, grid):
@@ -48,7 +64,7 @@ def run_astar_process(camera_id, rows, cols, start, goal, grid):
         return {
             "success": False,
             "path": [],
-            "message": f"cpp executable not found: {CPP_EXE_PATH}",
+            "message": f"C++ executable was not found at: {CPP_EXE_PATH}",
         }
 
     result = subprocess.run(
@@ -58,17 +74,13 @@ def run_astar_process(camera_id, rows, cols, start, goal, grid):
     )
 
     if result.returncode != 0:
-        error_text = result.stderr.strip() or result.stdout.strip() or "unknown cpp error"
+        error_text = result.stderr.strip() or result.stdout.strip() or "Unknown C++ pathfinder error."
         return {"success": False, "path": [], "message": error_text}
 
     return read_astar_output_file(output_file)
 
 
 def is_spot_available(spot):
-    """
-    Tries a few likely field names so this still works even if the spot schema changes a bit.
-    """
-
     if spot.get("occupied") is False:
         return True
 
@@ -109,7 +121,7 @@ def find_nearest_available_path(camera_id, rows, cols, start, grid, parking_spac
             "success": False,
             "path": [],
             "goal": None,
-            "message": "no available parking spaces found",
+            "message": "No available parking spaces were found.",
         }
 
     best_result = None
@@ -142,12 +154,12 @@ def find_nearest_available_path(camera_id, rows, cols, start, grid, parking_spac
             "success": False,
             "path": [],
             "goal": None,
-            "message": "no valid route to any available parking space",
+            "message": "No valid route was found to any available parking space.",
         }
 
     return {
         "success": True,
         "path": best_result["path"],
         "goal": best_goal,
-        "message": "nearest available parking space routed",
+        "message": "Nearest available parking space routed successfully.",
     }
