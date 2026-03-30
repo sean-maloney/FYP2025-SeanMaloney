@@ -22,6 +22,7 @@ export default function ParkingGridEditor() {
   const [selectedTool, setSelectedTool] = useState("road");
   const [goal, setGoal] = useState("");
   const [path, setPath] = useState([]);
+  const [selectedGoal, setSelectedGoal] = useState(null);
 
   const [grid, setGrid] = useState(
     Array.from({ length: 12 }, () => Array.from({ length: 16 }, () => "empty"))
@@ -32,15 +33,15 @@ export default function ParkingGridEditor() {
     img.src = "/parking-layout.png";
     img.onload = () => {
       imageRef.current = img;
-      drawCanvas(grid, []);
+      drawCanvas(grid, [], null);
     };
   }, []);
 
   useEffect(() => {
-    drawCanvas(grid, path);
-  }, [grid, showGrid, path]);
+    drawCanvas(grid, path, selectedGoal);
+  }, [grid, showGrid, path, selectedGoal]);
 
-  function drawCanvas(currentGrid, currentPath) {
+  function drawCanvas(currentGrid, currentPath, currentGoal) {
     const canvas = canvasRef.current;
     if (!canvas || !imageRef.current) return;
 
@@ -67,6 +68,14 @@ export default function ParkingGridEditor() {
           }
         }
       }
+    }
+
+    if (currentGoal && currentGoal.length === 2) {
+      const goalX = currentGoal[1] * CELL_SIZE;
+      const goalY = currentGoal[0] * CELL_SIZE;
+      ctx.strokeStyle = "#1d4ed8";
+      ctx.lineWidth = 3;
+      ctx.strokeRect(goalX + 2, goalY + 2, CELL_SIZE - 4, CELL_SIZE - 4);
     }
 
     if (currentPath.length > 0) {
@@ -197,6 +206,7 @@ export default function ParkingGridEditor() {
 
     setGrid(rebuilt);
     setPath([]);
+    setSelectedGoal(null);
   }
 
   async function runPathfinder() {
@@ -231,15 +241,46 @@ export default function ParkingGridEditor() {
     if (!data.success) {
       alert(data.message || "no path found");
       setPath([]);
+      setSelectedGoal(null);
       return;
     }
 
     setPath(data.path);
+    setSelectedGoal([goalRow, goalCol]);
+  }
+
+  async function routeNearestAvailable() {
+    const start = buildPayload().start;
+    if (!start || start.length !== 2) {
+      alert("please set a start cell first");
+      return;
+    }
+
+    const response = await fetch(`${API_BASE}/api/pathfinder/run-nearest/${cameraId}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ start }),
+    });
+
+    const data = await response.json();
+
+    if (!data.success) {
+      alert(data.message || "could not route to nearest available space");
+      setPath([]);
+      setSelectedGoal(null);
+      return;
+    }
+
+    setPath(data.path || []);
+    setSelectedGoal(data.goal || null);
   }
 
   function clearGrid() {
     setGrid(Array.from({ length: rows }, () => Array.from({ length: cols }, () => "empty")));
     setPath([]);
+    setSelectedGoal(null);
   }
 
   return (
@@ -276,6 +317,7 @@ export default function ParkingGridEditor() {
         />
 
         <button onClick={runPathfinder}>Run A*</button>
+        <button onClick={routeNearestAvailable}>Route Nearest Available</button>
       </div>
 
       <canvas

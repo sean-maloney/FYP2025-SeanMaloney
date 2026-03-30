@@ -62,3 +62,92 @@ def run_astar_process(camera_id, rows, cols, start, goal, grid):
         return {"success": False, "path": [], "message": error_text}
 
     return read_astar_output_file(output_file)
+
+
+def is_spot_available(spot):
+    """
+    Tries a few likely field names so this still works even if the spot schema changes a bit.
+    """
+
+    if spot.get("occupied") is False:
+        return True
+
+    if spot.get("available") is True:
+        return True
+
+    if spot.get("is_available") is True:
+        return True
+
+    status_value = spot.get("status")
+    if isinstance(status_value, str):
+        status_value = status_value.lower().strip()
+        if status_value in ["available", "free", "vacant"]:
+            return True
+
+    return False
+
+
+def get_available_parking_cells(parking_spaces, spots_doc):
+    spots = spots_doc.get("spots", [])
+    available_cells = []
+
+    for index, spot in enumerate(spots):
+        if index >= len(parking_spaces):
+            break
+
+        if is_spot_available(spot):
+            available_cells.append(parking_spaces[index])
+
+    return available_cells
+
+
+def find_nearest_available_path(camera_id, rows, cols, start, grid, parking_spaces, spots_doc):
+    available_cells = get_available_parking_cells(parking_spaces, spots_doc)
+
+    if not available_cells:
+        return {
+            "success": False,
+            "path": [],
+            "goal": None,
+            "message": "no available parking spaces found",
+        }
+
+    best_result = None
+    best_goal = None
+    best_path_length = None
+
+    for goal in available_cells:
+        result = run_astar_process(
+            camera_id=f"{camera_id}_{goal[0]}_{goal[1]}",
+            rows=rows,
+            cols=cols,
+            start=start,
+            goal=goal,
+            grid=grid,
+        )
+
+        if not result.get("success"):
+            continue
+
+        current_path = result.get("path", [])
+        current_length = len(current_path)
+
+        if best_result is None or current_length < best_path_length:
+            best_result = result
+            best_goal = goal
+            best_path_length = current_length
+
+    if best_result is None:
+        return {
+            "success": False,
+            "path": [],
+            "goal": None,
+            "message": "no valid route to any available parking space",
+        }
+
+    return {
+        "success": True,
+        "path": best_result["path"],
+        "goal": best_goal,
+        "message": "nearest available parking space routed",
+    }
