@@ -1,14 +1,9 @@
-import os
 from typing import Optional
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
-from dotenv import load_dotenv
-
-load_dotenv()
-
-MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017")
-MONGO_DB = os.getenv("MONGO_DB", "fyp_parking")
+from .config import MONGO_URI, MONGO_DB
 
 _client: Optional[AsyncIOMotorClient] = None
+
 
 async def connect_mongo() -> None:
     global _client
@@ -18,14 +13,18 @@ async def connect_mongo() -> None:
         db = _client[MONGO_DB]
         await db.jobs.create_index("status")
         await db.jobs.create_index("created_at")
+        await db.jobs.create_index([("camera_id", 1), ("created_at", -1)])
         await db.spot_configs.create_index([("camera_id", 1), ("status", 1)])
         await db.spot_configs.create_index([("camera_id", 1), ("version", -1)])
+        await db.captures.create_index([("camera_id", 1), ("updated_at", -1)])
+
 
 async def close_mongo() -> None:
     global _client
     if _client is not None:
         _client.close()
         _client = None
+
 
 def get_db() -> AsyncIOMotorDatabase:
     if _client is None:
