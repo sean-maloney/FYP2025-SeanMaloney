@@ -16,6 +16,7 @@ from .spots_routes import router as spots_router
 from .capture_routes import router as capture_router
 from .pathfinder_routes import router as pathfinder_router
 from .yolo_service import load_yolo_model, run_inference_with_spots
+from .experience_routes import router as experience_router
 
 
 @asynccontextmanager
@@ -38,6 +39,7 @@ app = FastAPI(
 app.include_router(spots_router)
 app.include_router(capture_router)
 app.include_router(pathfinder_router)
+app.include_router(experience_router)
 
 app.add_middleware(
     CORSMiddleware,
