@@ -1,0 +1,100 @@
+.loginShell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  background: radial-gradient(circle at top, #101b52 0%, #07102c 48%, #050914 100%);
+  padding: 24px;
+}
+
+.loginCard,
+.heroCard,
+.canvasCard,
+.legendCard,
+.adminCard {
+  background: rgba(11, 20, 50, 0.88);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 24px;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(12px);
+}
+
+.loginCard {
+  width: min(100%, 460px);
+  padding: 32px;
+}
+
+.brandRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.brandBadge {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(135deg, #0ea5e9, #22c55e);
+  color: white;
+  font-weight: 800;
+}
+
+.brandTitle {
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+
+.brandSubtitle {
+  color: #94a3b8;
+  font-size: 0.95rem;
+}
+
+.loginTitle {
+  margin: 0 0 8px;
+  font-size: 2rem;
+}
+
+.loginText {
+  margin: 0 0 20px;
+  color: #94a3b8;
+}
+
+.formStack {
+  display: grid;
+  gap: 14px;
+}
+
+.input,
+.fileInput {
+  width: 100%;
+  border-radius: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  background: rgba(15, 23, 42, 0.8);
+  color: white;
+  padding: 14px 16px;
+  box-sizing: border-box;
+}
+
+.fileInput {
+  padding: 10px 12px;
+}
+
+.primaryButton,
+.getParkingButton,
+.secondaryLink,
+.disabledLink {
+  border: none;
+  border-radius: 999px;
+  padding: 14px 20px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.primaryButton,
+.getParkingButton {
+  background: linear-gradient(135deg, #06b6d4, #2563eb);
+  color: white;
+  cursor: pointer;
+}
