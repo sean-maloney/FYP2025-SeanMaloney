@@ -13,7 +13,7 @@ CAPTURE_DIR = BASE_DIR / "captures"
 
 GRID_CONFIG_DIR = BASE_DIR / "grid_configs"
 PATHFINDER_TEMP_DIR = BASE_DIR / "pathfinder_temp"
-CPP_EXE_PATH = PROJECT_ROOT / "cpp_pathfinder" / "build" / "x64" / "Debug" / "AStarProject.exe"
+CPP_EXE_PATH = PROJECT_ROOT / "cpp_pathfinder" / "x64" / "Release" / "AStarProject.exe"
 
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
