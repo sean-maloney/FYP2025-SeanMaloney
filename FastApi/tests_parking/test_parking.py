@@ -96,6 +96,34 @@ def test_save_grid_start_negative(client, tmp_path):
     assert "start" in r.json()["detail"]
 
 
+def test_save_grid_parking_space_outside_grid(client, tmp_path):
+    with patch("app_parking.routes.pathfinder.GRID_CONFIG_DIR", tmp_path):
+        r = client.post("/api/pathfinder/grid/save", json={
+            "camera_id": "cam1",
+            "rows": 2,
+            "cols": 2,
+            "grid": [[0, 0], [0, 0]],
+            "start": [0, 0],
+            "parking_spaces": [[5, 5]],
+        })
+    assert r.status_code == 400
+    assert "parking" in r.json()["detail"]
+
+
+def test_save_grid_parking_space_negative(client, tmp_path):
+    with patch("app_parking.routes.pathfinder.GRID_CONFIG_DIR", tmp_path):
+        r = client.post("/api/pathfinder/grid/save", json={
+            "camera_id": "cam1",
+            "rows": 2,
+            "cols": 2,
+            "grid": [[0, 0], [0, 0]],
+            "start": [0, 0],
+            "parking_spaces": [[-1, 0]],
+        })
+    assert r.status_code == 400
+    assert "parking" in r.json()["detail"]
+
+
 def test_save_grid_success(client, tmp_path):
     with patch("app_parking.routes.pathfinder.GRID_CONFIG_DIR", tmp_path):
         r = client.post("/api/pathfinder/grid/save", json={
