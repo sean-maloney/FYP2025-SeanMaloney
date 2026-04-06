@@ -1,35 +1,92 @@
-FastApi/app_parking/uploads/
-FastApi/app_parking/outputs/
-YOLOv8/datasets/
-VisDrone.zip
-*.pt
+# ===========================
+# Python
+# ===========================
 __pycache__/
-*.pyc 
+*.pyc
 *.pyo
+*.pyd
 .venv/
 venv/
-runs/
+env/
+*.egg-info/
+dist/
+.pytest_cache/
+
+# ===========================
+# Environment
+# ===========================
+.env
+.env.*
+!.env.example
+
+# ===========================
+# FastAPI / Backend
+# ===========================
+FastApi/app_parking/uploads/
+FastApi/app_parking/outputs/
+FastApi/app_parking/captures/
+FastApi/app_parking/pathfinder_temp/
+FastApi/app_parking/grid_configs/
+
+# ===========================
+# YOLO / ML
+# ===========================
+YOLOv8/datasets/
+*.pt
 !runs/**/best.pt
-/node_modules
-/.pnp
-.pnp.*
-.yarn/*
-!.yarn/patches
-!.yarn/plugins
-!.yarn/releases
-!.yarn/versions
-/coverage
-/.next/
-/out/
-/build
-.DS_Store
-*.pem
+runs/
+VisDrone.zip
+
+# ===========================
+# C++ Build Artifacts
+# ===========================
+cpp_pathfinder/build/
+cpp_pathfinder/x64/
+cpp_pathfinder/AStarProject/x64/
+cpp_pathfinder/*.user
+*.obj
+*.ilk
+*.pdb
+*.idb
+*.tlog/
+*.recipe
+*.FileListAbsolute.txt
+
+# ===========================
+# Next.js / Frontend
+# ===========================
+parking-frontend/.next/
+parking-frontend/out/
+parking-frontend/node_modules/
+parking-frontend/coverage/
+parking-frontend/.pnp
+parking-frontend/.pnp.*
+parking-frontend/.yarn/*
+!parking-frontend/.yarn/patches
+!parking-frontend/.yarn/plugins
+!parking-frontend/.yarn/releases
+!parking-frontend/.yarn/versions
+next-env.d.ts
+*.tsbuildinfo
+
+# ===========================
+# Logs
+# ===========================
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
-.env*
+
+# ===========================
+# OS
+# ===========================
+.DS_Store
+Thumbs.db
+
+# ===========================
+# Misc
+# ===========================
+*.pem
 .vercel
-*.tsbuildinfo
-next-env.d.ts
-venv
+/node_modules
+package-lock.json
