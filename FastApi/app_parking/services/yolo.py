@@ -5,21 +5,18 @@ import cv2
 import numpy as np
 from ultralytics import YOLO
 
-from .config import YOLO_WEIGHTS_PATH, YOLO_DEVICE
+from ..core.config import YOLO_WEIGHTS_PATH, YOLO_DEVICE
 
 yolo_model: Optional[YOLO] = None
 
 
 def load_yolo_model() -> None:
     global yolo_model
-
     if yolo_model is not None:
         return
-
     if not YOLO_WEIGHTS_PATH.exists():
         yolo_model = None
         return
-
     model = YOLO(str(YOLO_WEIGHTS_PATH))
     try:
         model.to(YOLO_DEVICE)
@@ -72,34 +69,23 @@ def analyze_image_with_spots(
                 continue
             points.append(_bottom_center(x1, y1, x2, y2))
 
-    available = 0
-    occupied = 0
-    spots = []
-
     h, w = image.shape[:2]
+    available, occupied, spots = 0, 0, []
 
     for s in spots_doc.get("spots", []):
         sid = s.get("id", "")
-        stype = s.get("type", "parking")
-        description = s.get("description", "")
         poly = s.get("polygon", [])
         if not sid or len(poly) < 3:
             continue
 
         poly_np = _norm_poly_to_px(poly, w, h)
-        is_occupied = False
+        is_occupied = any(_is_point_in_poly(px, py, poly_np) for px, py in points)
 
-        for px, py in points:
-            if _is_point_in_poly(px, py, poly_np):
-                is_occupied = True
-                break
-
-        status = "occupied" if is_occupied else "available"
         spots.append({
             "id": sid,
-            "type": stype,
-            "description": description,
-            "status": status,
+            "type": s.get("type", "parking"),
+            "description": s.get("description", ""),
+            "status": "occupied" if is_occupied else "available",
         })
 
         if is_occupied:
@@ -107,11 +93,7 @@ def analyze_image_with_spots(
         else:
             available += 1
 
-    return {
-        "available": available,
-        "occupied": occupied,
-        "spots": spots,
-    }
+    return {"available": available, "occupied": occupied, "spots": spots}
 
 
 def run_inference_with_spots(
@@ -144,17 +126,13 @@ def run_inference_with_spots(
         cap.release()
         raise RuntimeError("Could not open VideoWriter for output video")
 
-    spots_poly = []
-    for s in spots_doc.get("spots", []):
-        sid = s.get("id", "")
-        stype = s.get("type", "parking")
-        description = s.get("description", "")
-        poly = s.get("polygon", [])
-        if sid and len(poly) >= 3:
-            spots_poly.append((sid, stype, description, _norm_poly_to_px(poly, w, h)))
+    spots_poly = [
+        (s.get("id", ""), s.get("type", "parking"), s.get("description", ""), _norm_poly_to_px(s.get("polygon", []), w, h))
+        for s in spots_doc.get("spots", [])
+        if s.get("id") and len(s.get("polygon", [])) >= 3
+    ]
 
-    last_available = 0
-    last_occupied = 0
+    last_available, last_occupied = 0, 0
 
     while True:
         ret, frame = cap.read()
@@ -163,7 +141,6 @@ def run_inference_with_spots(
 
         r = yolo_model.predict(frame, conf=conf, verbose=False, device=YOLO_DEVICE)[0]
         points = []
-
         if r.boxes is not None and len(r.boxes) > 0:
             xyxy = r.boxes.xyxy.cpu().numpy()
             cls = r.boxes.cls.cpu().numpy().astype(int) if r.boxes.cls is not None else None
@@ -172,44 +149,23 @@ def run_inference_with_spots(
                     continue
                 points.append(_bottom_center(x1, y1, x2, y2))
 
-        occupied_count = 0
-        available_count = 0
-
+        occupied_count, available_count = 0, 0
         for sid, stype, description, poly_np in spots_poly:
-            occupied = False
-            for px, py in points:
-                if _is_point_in_poly(px, py, poly_np):
-                    occupied = True
-                    break
-
-            color = (0, 0, 255) if occupied else (0, 255, 0)
+            is_occupied = any(_is_point_in_poly(px, py, poly_np) for px, py in points)
+            color = (0, 0, 255) if is_occupied else (0, 255, 0)
             cv2.polylines(frame, [poly_np], True, color, 2)
             x0, y0 = int(poly_np[0][0][0]), int(poly_np[0][0][1])
-            label = sid if not stype else f"{sid} ({stype})"
-            cv2.putText(frame, label, (x0 + 6, y0 - 6), cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2, cv2.LINE_AA)
-
-            if occupied:
+            cv2.putText(frame, f"{sid} ({stype})", (x0 + 6, y0 - 6), cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2, cv2.LINE_AA)
+            if is_occupied:
                 occupied_count += 1
             else:
                 available_count += 1
 
-        last_available = available_count
-        last_occupied = occupied_count
-
-        cv2.putText(
-            frame,
-            f"Available: {available_count}  Occupied: {occupied_count}",
-            (20, 30),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.9,
-            (255, 255, 255),
-            2,
-            cv2.LINE_AA,
-        )
-
+        last_available, last_occupied = available_count, occupied_count
+        cv2.putText(frame, f"Available: {available_count}  Occupied: {occupied_count}",
+                    (20, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (255, 255, 255), 2, cv2.LINE_AA)
         out.write(frame)
 
     cap.release()
     out.release()
-
     return out_path, last_available, last_occupied

@@ -1,7 +1,6 @@
 from typing import List, Literal
 from pydantic import BaseModel
 
-
 CellType = Literal["empty", "road", "blocked", "start", "parking"]
 
 

@@ -254,6 +254,7 @@ export default function ParkingExperience() {
 
       setStatus("Running parking pipeline...");
       const data = await runParkingExperience({ file: videoFile, cameraId });
+      console.log("experience result:", data);
 
       setResult(data);
       setSnapshotUrl(`${API_BASE}${data.snapshot_url}?t=${Date.now()}`);

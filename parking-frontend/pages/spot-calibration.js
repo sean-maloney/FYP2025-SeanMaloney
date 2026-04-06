@@ -1,5 +1,5 @@
 import { useRouter } from "next/router";
-import SpotDrawer from "../components/SpotDrawer";
+import SpotDrawer from "../components/spots/SpotDrawer";
 
 export default function SpotCalibrationPage() {
   const router = useRouter();

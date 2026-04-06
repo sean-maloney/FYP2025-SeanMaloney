@@ -9,7 +9,6 @@ async def connect_mongo() -> None:
     global _client
     if _client is None:
         _client = AsyncIOMotorClient(MONGO_URI)
-
         db = _client[MONGO_DB]
         await db.jobs.create_index("status")
         await db.jobs.create_index("created_at")
