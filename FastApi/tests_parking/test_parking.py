@@ -27,6 +27,46 @@ def test_save_grid_missing_camera_id(client):
     r = client.post("/api/pathfinder/grid/save", json={"rows": 2, "cols": 2, "grid": [[0, 0], [0, 0]], "start": [0, 0]})
     assert r.status_code == 400
 
+def test_save_grid_row_count_mismatch(client, tmp_path):
+    with patch("app_parking.routes.pathfinder.GRID_CONFIG_DIR", tmp_path):
+        r = client.post("/api/pathfinder/grid/save", json={
+            "camera_id": "cam1",
+            "rows": 3,
+            "cols": 2,
+            "grid": [[0, 0], [0, 0]],
+            "start": [0, 0],
+            "parking_spaces": [],
+        })
+    assert r.status_code == 400
+    assert "row" in r.json()["detail"]
+
+
+def test_save_grid_col_count_mismatch(client, tmp_path):
+    with patch("app_parking.routes.pathfinder.GRID_CONFIG_DIR", tmp_path):
+        r = client.post("/api/pathfinder/grid/save", json={
+            "camera_id": "cam1",
+            "rows": 2,
+            "cols": 3,
+            "grid": [[0, 0], [0, 0]],
+            "start": [0, 0],
+            "parking_spaces": [],
+        })
+    assert r.status_code == 400
+    assert "col" in r.json()["detail"]
+
+
+def test_save_grid_zero_rows(client, tmp_path):
+    with patch("app_parking.routes.pathfinder.GRID_CONFIG_DIR", tmp_path):
+        r = client.post("/api/pathfinder/grid/save", json={
+            "camera_id": "cam1",
+            "rows": 0,
+            "cols": 2,
+            "grid": [],
+            "start": [0, 0],
+            "parking_spaces": [],
+        })
+    assert r.status_code == 400
+
 
 def test_save_grid_success(client, tmp_path):
     with patch("app_parking.routes.pathfinder.GRID_CONFIG_DIR", tmp_path):
