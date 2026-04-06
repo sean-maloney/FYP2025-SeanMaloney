@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-BASE_DIR = Path(__file__).resolve().parent
+BASE_DIR = Path(__file__).resolve().parent.parent  # points to app_parking/
 PROJECT_ROOT = BASE_DIR.parent.parent
 
 UPLOAD_DIR = BASE_DIR / "uploads"

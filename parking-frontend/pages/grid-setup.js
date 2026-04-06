@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import ParkingGridEditor from "../components/ParkingGridEditor";
+import ParkingGridEditor from "../components/grid/ParkingGridEditor";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000";

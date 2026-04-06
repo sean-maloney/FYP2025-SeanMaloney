@@ -1,9 +1,8 @@
+import asyncio
 from contextlib import asynccontextmanager
 from pathlib import Path
 from uuid import uuid4
 from datetime import datetime
-
-import asyncio
 from functools import partial
 
 import cv2
@@ -12,13 +11,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
-from .config import UPLOAD_DIR, OUTPUT_DIR, CAPTURE_DIR
-from .db import connect_mongo, close_mongo, get_db
-from .spots_routes import router as spots_router
-from .capture_routes import router as capture_router
-from .pathfinder_routes import router as pathfinder_router
-from .experience_routes import router as experience_router
-from .yolo_service import load_yolo_model, run_inference_with_spots
+from .core.config import UPLOAD_DIR, OUTPUT_DIR, CAPTURE_DIR
+from .core.db import connect_mongo, close_mongo, get_db
+from .routes.spots import router as spots_router
+from .routes.captures import router as captures_router
+from .routes.pathfinder import router as pathfinder_router
+from .routes.experience import router as experience_router
+from .services.yolo import load_yolo_model, run_inference_with_spots
 
 
 @asynccontextmanager
@@ -38,17 +37,17 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-app.include_router(spots_router)
-app.include_router(capture_router)
-app.include_router(pathfinder_router)
-app.include_router(experience_router)
-
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.include_router(spots_router)
+app.include_router(captures_router)
+app.include_router(pathfinder_router)
+app.include_router(experience_router)
 
 
 @app.get("/health")
@@ -66,7 +65,6 @@ async def upload_video(
 
     if not file.filename:
         raise HTTPException(status_code=400, detail="no file uploaded")
-
     if not file.content_type or not file.content_type.startswith("video"):
         raise HTTPException(status_code=400, detail="file must be a video")
 
@@ -79,20 +77,18 @@ async def upload_video(
     job_dir = OUTPUT_DIR / job_id
     job_dir.mkdir(parents=True, exist_ok=True)
 
-    await db.jobs.insert_one(
-        {
-            "_id": job_id,
-            "camera_id": camera_id,
-            "status": "uploaded",
-            "created_at": datetime.utcnow(),
-            "input_path": str(upload_path),
-            "output_file": None,
-            "snapshot_file": None,
-            "available": None,
-            "occupied": None,
-            "error": None,
-        }
-    )
+    await db.jobs.insert_one({
+        "_id": job_id,
+        "camera_id": camera_id,
+        "status": "uploaded",
+        "created_at": datetime.utcnow(),
+        "input_path": str(upload_path),
+        "output_file": None,
+        "snapshot_file": None,
+        "available": None,
+        "occupied": None,
+        "error": None,
+    })
 
     return {"job_id": job_id, "camera_id": camera_id}
 
@@ -112,8 +108,7 @@ async def job_snapshot(job_id: str, db: AsyncIOMotorDatabase = Depends(get_db)):
     if not job:
         raise HTTPException(status_code=404, detail="job not found")
 
-    job_dir = OUTPUT_DIR / job_id
-    snap_path = job_dir / "snapshot.jpg"
+    snap_path = OUTPUT_DIR / job_id / "snapshot.jpg"
 
     if not snap_path.exists():
         input_path = job.get("input_path")
@@ -133,10 +128,7 @@ async def job_snapshot(job_id: str, db: AsyncIOMotorDatabase = Depends(get_db)):
         except RuntimeError as e:
             raise HTTPException(status_code=500, detail=str(e))
 
-        await db.jobs.update_one(
-            {"_id": job_id},
-            {"$set": {"snapshot_file": str(snap_path.name)}},
-        )
+        await db.jobs.update_one({"_id": job_id}, {"$set": {"snapshot_file": snap_path.name}})
 
     return FileResponse(str(snap_path), media_type="image/jpeg", filename="snapshot.jpg")
 
@@ -146,7 +138,6 @@ async def run_job(job_id: str, db: AsyncIOMotorDatabase = Depends(get_db)):
     job = await db.jobs.find_one({"_id": job_id})
     if not job:
         raise HTTPException(status_code=404, detail="job not found")
-
     if job.get("status") == "processing":
         return {"job_id": job_id, "status": "processing"}
 
@@ -156,8 +147,7 @@ async def run_job(job_id: str, db: AsyncIOMotorDatabase = Depends(get_db)):
         raise HTTPException(status_code=500, detail="job missing input_path or camera_id")
 
     spots_doc = await db.spot_configs.find_one(
-        {"camera_id": camera_id, "status": "published"},
-        sort=[("version", -1)],
+        {"camera_id": camera_id, "status": "published"}, sort=[("version", -1)]
     )
     if not spots_doc:
         raise HTTPException(status_code=400, detail="no published spot config for this camera_id")
@@ -166,39 +156,18 @@ async def run_job(job_id: str, db: AsyncIOMotorDatabase = Depends(get_db)):
 
     try:
         job_dir = OUTPUT_DIR / job_id
-        loop = asyncio.get_event_loop()
-        out_path, available, occupied = await loop.run_in_executor(
+        out_path, available, occupied = await asyncio.get_event_loop().run_in_executor(
             None,
-            partial(
-                run_inference_with_spots,
-                input_video=Path(input_path),
-                output_dir=job_dir,
-                spots_doc=spots_doc,
-            ),
+            partial(run_inference_with_spots, input_video=Path(input_path), output_dir=job_dir, spots_doc=spots_doc),
         )
-
         await db.jobs.update_one(
             {"_id": job_id},
-            {"$set": {
-                "status": "done",
-                "output_file": out_path.name,
-                "available": int(available),
-                "occupied": int(occupied),
-            }},
+            {"$set": {"status": "done", "output_file": out_path.name, "available": int(available), "occupied": int(occupied)}},
         )
-        return {
-            "job_id": job_id,
-            "status": "done",
-            "output_file": out_path.name,
-            "available": available,
-            "occupied": occupied,
-        }
+        return {"job_id": job_id, "status": "done", "output_file": out_path.name, "available": available, "occupied": occupied}
 
     except Exception as e:
-        await db.jobs.update_one(
-            {"_id": job_id},
-            {"$set": {"status": "failed", "error": str(e)}},
-        )
+        await db.jobs.update_one({"_id": job_id}, {"$set": {"status": "failed", "error": str(e)}})
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -207,17 +176,14 @@ async def get_video(job_id: str, db: AsyncIOMotorDatabase = Depends(get_db)):
     job = await db.jobs.find_one({"_id": job_id})
     if not job:
         raise HTTPException(status_code=404, detail="job not found")
-
     if job.get("status") != "done" or not job.get("output_file"):
         raise HTTPException(status_code=409, detail=f"video not ready (status={job.get('status')})")
 
-    video_path = (OUTPUT_DIR / job_id) / job["output_file"]
+    video_path = OUTPUT_DIR / job_id / job["output_file"]
     if not video_path.exists():
         raise HTTPException(status_code=500, detail="output file missing on disk")
 
     return FileResponse(
-        str(video_path),
-        media_type="video/mp4",
-        filename=video_path.name,
+        str(video_path), media_type="video/mp4", filename=video_path.name,
         headers={"Content-Disposition": f'inline; filename="{video_path.name}"'},
     )

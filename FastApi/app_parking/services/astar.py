@@ -1,7 +1,7 @@
 import subprocess
 from typing import Any, Dict, List, Optional, Tuple
 
-from .config import PATHFINDER_TEMP_DIR, CPP_EXE_PATH
+from ..core.config import PATHFINDER_TEMP_DIR, CPP_EXE_PATH
 
 
 def write_astar_input_file(file_path, rows, cols, start, goal, grid):
@@ -83,19 +83,13 @@ def run_astar_process(camera_id, rows, cols, start, goal, grid):
 def is_spot_available(spot: Dict[str, Any]) -> bool:
     if spot.get("occupied") is False:
         return True
-
     if spot.get("available") is True:
         return True
-
     if spot.get("is_available") is True:
         return True
-
     status_value = spot.get("status")
-    if isinstance(status_value, str):
-        status_value = status_value.lower().strip()
-        if status_value in ["available", "free", "vacant"]:
-            return True
-
+    if isinstance(status_value, str) and status_value.lower().strip() in ["available", "free", "vacant"]:
+        return True
     return False
 
 
@@ -107,43 +101,25 @@ def point_in_polygon(x: float, y: float, polygon: List[Dict[str, float]]) -> boo
     j = len(polygon) - 1
 
     for i in range(len(polygon)):
-        xi = float(polygon[i]["x"])
-        yi = float(polygon[i]["y"])
-        xj = float(polygon[j]["x"])
-        yj = float(polygon[j]["y"])
+        xi, yi = float(polygon[i]["x"]), float(polygon[i]["y"])
+        xj, yj = float(polygon[j]["x"]), float(polygon[j]["y"])
 
         intersects = ((yi > y) != (yj > y)) and (
             x < (xj - xi) * (y - yi) / ((yj - yi) if (yj - yi) != 0 else 1e-9) + xi
         )
-
         if intersects:
             inside = not inside
-
         j = i
 
     return inside
 
 
-def grid_cell_center_normalized(cell: List[int], rows: int, cols: int) -> Tuple[float, float]:
-    row, col = cell
-    x = (col + 0.5) / cols
-    y = (row + 0.5) / rows
-    return x, y
-
-
 def sample_points_for_grid_cell(cell: List[int], rows: int, cols: int) -> List[Tuple[float, float]]:
     row, col = cell
-
-    left = col / cols
-    right = (col + 1) / cols
-    top = row / rows
-    bottom = (row + 1) / rows
-
-    mid_x = (left + right) / 2
-    mid_y = (top + bottom) / 2
-
-    inset_x = (right - left) * 0.2
-    inset_y = (bottom - top) * 0.2
+    left, right = col / cols, (col + 1) / cols
+    top, bottom = row / rows, (row + 1) / rows
+    mid_x, mid_y = (left + right) / 2, (top + bottom) / 2
+    inset_x, inset_y = (right - left) * 0.2, (bottom - top) * 0.2
 
     return [
         (mid_x, mid_y),
@@ -155,120 +131,61 @@ def sample_points_for_grid_cell(cell: List[int], rows: int, cols: int) -> List[T
 
 
 def find_spot_for_grid_cell(
-    cell: List[int],
-    rows: int,
-    cols: int,
-    spots: List[Dict[str, Any]],
+    cell: List[int], rows: int, cols: int, spots: List[Dict[str, Any]]
 ) -> Optional[Dict[str, Any]]:
-    sample_points = sample_points_for_grid_cell(cell, rows, cols)
-    print("checking cell:", cell, "sample_points:", sample_points, flush=True)
-
     for idx, spot in enumerate(spots):
         polygon = spot.get("polygon", [])
-        for px, py in sample_points:
+        for px, py in sample_points_for_grid_cell(cell, rows, cols):
             if point_in_polygon(px, py, polygon):
-                print("matched cell", cell, "to spot index", idx, flush=True)
                 return spot
-
-    print("no polygon match for cell:", cell, flush=True)
     return None
 
 
 def get_available_parking_cells(
-    parking_spaces: List[List[int]],
-    rows: int,
-    cols: int,
-    spots_doc: Dict[str, Any],
+    parking_spaces: List[List[int]], rows: int, cols: int, spots_doc: Dict[str, Any]
 ) -> List[List[int]]:
     spots = spots_doc.get("spots", [])
     available_cells = []
 
-    print("parking_spaces:", parking_spaces, flush=True)
-    print("spots count:", len(spots), flush=True)
-
     for cell in parking_spaces:
         matched_spot = find_spot_for_grid_cell(cell, rows, cols, spots)
-        print("cell:", cell, "matched_spot:", matched_spot, flush=True)
-
         if matched_spot and is_spot_available(matched_spot):
-            print("cell is available:", cell, flush=True)
             available_cells.append(cell)
-        elif matched_spot:
-            print("cell matched a spot but it is NOT available", flush=True)
 
-    print("final available_cells:", available_cells, flush=True)
     return available_cells
 
 
 def find_nearest_available_path(camera_id, rows, cols, start, grid, parking_spaces, spots_doc):
-    print("ASTAR FUNCTION CALLED", flush=True)
-
     available_cells = get_available_parking_cells(
-        parking_spaces=parking_spaces,
-        rows=rows,
-        cols=cols,
-        spots_doc=spots_doc,
+        parking_spaces=parking_spaces, rows=rows, cols=cols, spots_doc=spots_doc
     )
 
-    print("available_cells:", available_cells, flush=True)
-
     if not available_cells:
-        return {
-            "success": False,
-            "path": [],
-            "goal": None,
-            "message": "No available parking spaces were found.",
-        }
+        return {"success": False, "path": [], "goal": None, "message": "No available parking spaces were found."}
 
     best_result = None
     best_goal = None
     best_path_length = None
 
     for goal in available_cells:
-        print("Trying goal:", goal, flush=True)
-
         result = run_astar_process(
             camera_id=f"{camera_id}_{goal[0]}_{goal[1]}",
-            rows=rows,
-            cols=cols,
-            start=start,
-            goal=goal,
-            grid=grid,
+            rows=rows, cols=cols, start=start, goal=goal, grid=grid,
         )
-
-        print("A* result:", result, flush=True)
 
         if not result.get("success"):
             continue
 
         current_path = result.get("path", [])
-
         if not current_path or len(current_path) < 2:
-            print("Skipping trivial/empty path for goal:", goal, flush=True)
             continue
 
-        current_length = len(current_path)
-
-        if best_result is None or current_length < best_path_length:
+        if best_result is None or len(current_path) < best_path_length:
             best_result = result
             best_goal = goal
-            best_path_length = current_length
-            print("New best goal:", best_goal, flush=True)
-
-    print("best_goal:", best_goal, flush=True)
-    print("best_result:", best_result, flush=True)
+            best_path_length = len(current_path)
 
     if best_result is None:
-        return {
-            "success": False,
-            "path": [],
-            "goal": None,
-            "message": "No valid route was found to any available parking space.",
-        }
+        return {"success": False, "path": [], "goal": None, "message": "No valid route was found to any available parking space."}
 
-    return {
-        "success": True,
-        "path": best_result["path"],
-        "goal": best_goal,
-        "message": "Nearest available parking space routed successfully.",
-    }
+    return {"success": True, "path": best_result["path"], "goal": best_goal, "message": "Nearest available parking space routed successfully."}

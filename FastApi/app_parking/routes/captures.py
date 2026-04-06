@@ -1,22 +1,21 @@
 import asyncio
+from datetime import datetime
 from functools import partial
 from pathlib import Path
-from datetime import datetime
-import shutil
 import mimetypes
 
 from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, Form
 from fastapi.responses import FileResponse
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
-from .config import CAPTURE_DIR
-from .db import get_db
-from .yolo_service import analyze_image_with_spots
+from ..core.config import CAPTURE_DIR
+from ..core.db import get_db
+from ..services.yolo import analyze_image_with_spots
 
-router = APIRouter(tags=["captures"])
+router = APIRouter(prefix="/api/cameras", tags=["Captures"])
 
 
-@router.post("/api/pi/upload-snapshot")
+@router.post("/pi/upload-snapshot")
 async def upload_snapshot_from_pi(
     file: UploadFile = File(...),
     camera_id: str = Form("cam1"),
@@ -30,27 +29,18 @@ async def upload_snapshot_from_pi(
         raise HTTPException(status_code=400, detail="file must be jpg, jpeg, or png")
 
     save_path = CAPTURE_DIR / f"{camera_id}_latest{ext}"
-
-    with save_path.open("wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
+    file_bytes = await file.read()
+    await asyncio.get_event_loop().run_in_executor(None, save_path.write_bytes, file_bytes)
 
     await db.captures.update_one(
         {"_id": camera_id},
-        {
-            "$set": {
-                "_id": camera_id,
-                "camera_id": camera_id,
-                "file": save_path.name,
-                "updated_at": datetime.utcnow(),
-            }
-        },
+        {"$set": {"_id": camera_id, "camera_id": camera_id, "file": save_path.name, "updated_at": datetime.utcnow()}},
         upsert=True,
     )
-
     return {"status": "ok", "camera_id": camera_id, "image_url": f"/api/cameras/{camera_id}/image"}
 
 
-@router.post("/api/cameras/{camera_id}/capture")
+@router.post("/{camera_id}/capture")
 async def capture_current_camera_image(
     camera_id: str,
     db: AsyncIOMotorDatabase = Depends(get_db),
@@ -58,15 +48,10 @@ async def capture_current_camera_image(
     doc = await db.captures.find_one({"_id": camera_id})
     if not doc:
         raise HTTPException(status_code=404, detail="no snapshot uploaded yet for this camera")
-
-    return {
-        "camera_id": camera_id,
-        "image_url": f"/api/cameras/{camera_id}/image",
-        "updated_at": doc.get("updated_at"),
-    }
+    return {"camera_id": camera_id, "image_url": f"/api/cameras/{camera_id}/image", "updated_at": doc.get("updated_at")}
 
 
-@router.get("/api/cameras/{camera_id}/image", response_class=FileResponse)
+@router.get("/{camera_id}/image", response_class=FileResponse)
 async def get_current_camera_image(
     camera_id: str,
     db: AsyncIOMotorDatabase = Depends(get_db),
@@ -83,7 +68,7 @@ async def get_current_camera_image(
     return FileResponse(str(image_path), media_type=media_type, filename=image_path.name)
 
 
-@router.post("/api/cameras/{camera_id}/refresh")
+@router.post("/{camera_id}/refresh")
 async def refresh_camera_status(
     camera_id: str,
     db: AsyncIOMotorDatabase = Depends(get_db),
@@ -97,17 +82,14 @@ async def refresh_camera_status(
         raise HTTPException(status_code=404, detail="snapshot missing on disk")
 
     spots_doc = await db.spot_configs.find_one(
-        {"camera_id": camera_id, "status": "published"},
-        sort=[("version", -1)],
+        {"camera_id": camera_id, "status": "published"}, sort=[("version", -1)]
     )
     if not spots_doc:
         raise HTTPException(status_code=400, detail="no published spot config for this camera_id")
 
     try:
-        loop = asyncio.get_event_loop()
-        result = await loop.run_in_executor(
-            None,
-            partial(analyze_image_with_spots, input_image=image_path, spots_doc=spots_doc),
+        result = await asyncio.get_event_loop().run_in_executor(
+            None, partial(analyze_image_with_spots, input_image=image_path, spots_doc=spots_doc)
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
