@@ -1,3 +1,5 @@
+import asyncio
+from functools import partial
 from pathlib import Path
 from datetime import datetime
 import shutil
@@ -102,9 +104,10 @@ async def refresh_camera_status(
         raise HTTPException(status_code=400, detail="no published spot config for this camera_id")
 
     try:
-        result = analyze_image_with_spots(
-            input_image=image_path,
-            spots_doc=spots_doc,
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(
+            None,
+            partial(analyze_image_with_spots, input_image=image_path, spots_doc=spots_doc),
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

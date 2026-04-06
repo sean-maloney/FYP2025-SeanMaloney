@@ -2,7 +2,9 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from uuid import uuid4
 from datetime import datetime
-import shutil
+
+import asyncio
+from functools import partial
 
 import cv2
 from fastapi import FastAPI, UploadFile, File, HTTPException, status, Depends, Form
@@ -15,8 +17,8 @@ from .db import connect_mongo, close_mongo, get_db
 from .spots_routes import router as spots_router
 from .capture_routes import router as capture_router
 from .pathfinder_routes import router as pathfinder_router
-from .yolo_service import load_yolo_model, run_inference_with_spots
 from .experience_routes import router as experience_router
+from .yolo_service import load_yolo_model, run_inference_with_spots
 
 
 @asynccontextmanager
@@ -71,8 +73,8 @@ async def upload_video(
     ext = Path(file.filename).suffix.lower() or ".mp4"
     upload_path = UPLOAD_DIR / f"{job_id}{ext}"
 
-    with upload_path.open("wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
+    file_bytes = await file.read()
+    await asyncio.get_event_loop().run_in_executor(None, upload_path.write_bytes, file_bytes)
 
     job_dir = OUTPUT_DIR / job_id
     job_dir.mkdir(parents=True, exist_ok=True)
@@ -118,13 +120,18 @@ async def job_snapshot(job_id: str, db: AsyncIOMotorDatabase = Depends(get_db)):
         if not input_path:
             raise HTTPException(status_code=500, detail="job missing input_path")
 
-        cap = cv2.VideoCapture(str(input_path))
-        ok, frame = cap.read()
-        cap.release()
-        if not ok:
-            raise HTTPException(status_code=500, detail="could not read video frame")
+        def extract_snapshot():
+            cap = cv2.VideoCapture(str(input_path))
+            ok, frame = cap.read()
+            cap.release()
+            if not ok:
+                raise RuntimeError("could not read video frame")
+            cv2.imwrite(str(snap_path), frame)
 
-        cv2.imwrite(str(snap_path), frame)
+        try:
+            await asyncio.get_event_loop().run_in_executor(None, extract_snapshot)
+        except RuntimeError as e:
+            raise HTTPException(status_code=500, detail=str(e))
 
         await db.jobs.update_one(
             {"_id": job_id},
@@ -159,10 +166,15 @@ async def run_job(job_id: str, db: AsyncIOMotorDatabase = Depends(get_db)):
 
     try:
         job_dir = OUTPUT_DIR / job_id
-        out_path, available, occupied = run_inference_with_spots(
-            input_video=Path(input_path),
-            output_dir=job_dir,
-            spots_doc=spots_doc,
+        loop = asyncio.get_event_loop()
+        out_path, available, occupied = await loop.run_in_executor(
+            None,
+            partial(
+                run_inference_with_spots,
+                input_video=Path(input_path),
+                output_dir=job_dir,
+                spots_doc=spots_doc,
+            ),
         )
 
         await db.jobs.update_one(

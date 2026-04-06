@@ -1,8 +1,8 @@
+import asyncio
 from datetime import datetime
 from pathlib import Path
 from uuid import uuid4
 import json
-import shutil
 
 import cv2
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
@@ -63,33 +63,48 @@ async def run_experience(
     ext = Path(file.filename).suffix.lower() or ".mp4"
     upload_path = UPLOAD_DIR / f"{job_id}{ext}"
 
-    with upload_path.open("wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
+    loop = asyncio.get_event_loop()
+
+    file_bytes = await file.read()
+    await loop.run_in_executor(None, upload_path.write_bytes, file_bytes)
 
     job_dir = OUTPUT_DIR / job_id
     job_dir.mkdir(parents=True, exist_ok=True)
 
     snapshot_path = job_dir / "snapshot.jpg"
 
-    cap = cv2.VideoCapture(str(upload_path))
-    ok, frame = cap.read()
-    cap.release()
+    def extract_and_analyse():
+        cap = cv2.VideoCapture(str(upload_path))
+        ok, frame = cap.read()
+        cap.release()
+        if not ok:
+            raise RuntimeError("could not read the first video frame")
+        cv2.imwrite(str(snapshot_path), frame)
+        return analyze_image_with_spots(snapshot_path, spots_doc)
 
-    if not ok:
-        raise HTTPException(status_code=500, detail="could not read the first video frame")
+    try:
+        analysis = await loop.run_in_executor(None, extract_and_analyse)
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
-    cv2.imwrite(str(snapshot_path), frame)
+    # Merge live status back into the original spots (which have polygons)
+    status_by_id = {s["id"]: s["status"] for s in analysis["spots"]}
+    merged_spots = [
+        {**s, "status": status_by_id.get(s.get("id", ""), "occupied")}
+        for s in spots_doc.get("spots", [])
+    ]
 
-    analysis = analyze_image_with_spots(snapshot_path, spots_doc)
-
-    route_result = find_nearest_available_path(
-        camera_id=camera_id,
-        rows=grid_data["rows"],
-        cols=grid_data["cols"],
-        start=start,
-        grid=grid_data["grid"],
-        parking_spaces=parking_spaces,
-        spots_doc={"spots": analysis["spots"]},
+    route_result = await loop.run_in_executor(
+        None,
+        lambda: find_nearest_available_path(
+            camera_id=camera_id,
+            rows=grid_data["rows"],
+            cols=grid_data["cols"],
+            start=start,
+            grid=grid_data["grid"],
+            parking_spaces=parking_spaces,
+            spots_doc={"spots": merged_spots},
+        ),
     )
 
     await db.jobs.insert_one(
