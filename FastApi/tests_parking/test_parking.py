@@ -151,6 +151,25 @@ def test_get_published_spots_not_found(client):
     assert r.status_code == 404
     assert "not found" in r.json()["detail"].lower()
 
+def test_sample_points_for_grid_cell_center():
+    from app_parking.services.astar import sample_points_for_grid_cell
+    points = sample_points_for_grid_cell([0, 0], 10, 10)
+    center = points[0]
+    assert center == (0.05, 0.05)
+
+
+def test_sample_points_for_grid_cell_returns_five_points():
+    from app_parking.services.astar import sample_points_for_grid_cell
+    points = sample_points_for_grid_cell([2, 3], 10, 10)
+    assert len(points) == 5
+
+
+def test_sample_points_for_grid_cell_all_within_bounds():
+    from app_parking.services.astar import sample_points_for_grid_cell
+    points = sample_points_for_grid_cell([2, 3], 10, 10)
+    for x, y in points:
+        assert 0.0 <= x <= 1.0
+        assert 0.0 <= y <= 1.0
 
 def test_save_grid_success(client, tmp_path):
     with patch("app_parking.routes.pathfinder.GRID_CONFIG_DIR", tmp_path):
