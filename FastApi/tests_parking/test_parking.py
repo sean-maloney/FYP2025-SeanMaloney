@@ -124,6 +124,13 @@ def test_save_grid_parking_space_negative(client, tmp_path):
     assert "parking" in r.json()["detail"]
 
 
+def test_astar_start_equals_goal():
+    from app_parking.services.astar import run_astar_process
+    grid = [[0] * 5 for _ in range(5)]
+    result = run_astar_process("test", 5, 5, [2, 2], [2, 2], grid)
+    assert result["success"] is False
+
+
 def test_save_grid_success(client, tmp_path):
     with patch("app_parking.routes.pathfinder.GRID_CONFIG_DIR", tmp_path):
         r = client.post("/api/pathfinder/grid/save", json={
