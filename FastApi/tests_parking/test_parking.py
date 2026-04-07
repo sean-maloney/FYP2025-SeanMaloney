@@ -146,6 +146,12 @@ def test_job_snapshot_not_found(client):
     assert "not found" in r.json()["detail"].lower()
 
 
+def test_get_published_spots_not_found(client):
+    r = client.get("/api/cameras/nonexistent-camera/spots/published")
+    assert r.status_code == 404
+    assert "not found" in r.json()["detail"].lower()
+
+
 def test_save_grid_success(client, tmp_path):
     with patch("app_parking.routes.pathfinder.GRID_CONFIG_DIR", tmp_path):
         r = client.post("/api/pathfinder/grid/save", json={
