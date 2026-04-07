@@ -131,6 +131,15 @@ def test_astar_start_equals_goal():
     assert result["success"] is False
 
 
+def test_save_spots_camera_id_mismatch(client):
+    r = client.post("/api/cameras/cam1/spots", json={
+        "camera_id": "cam2",
+        "spots": [],
+    })
+    assert r.status_code == 400
+    assert "match" in r.json()["detail"].lower()
+
+
 def test_save_grid_success(client, tmp_path):
     with patch("app_parking.routes.pathfinder.GRID_CONFIG_DIR", tmp_path):
         r = client.post("/api/pathfinder/grid/save", json={
