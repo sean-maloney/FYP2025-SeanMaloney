@@ -171,6 +171,25 @@ def test_sample_points_for_grid_cell_all_within_bounds():
         assert 0.0 <= x <= 1.0
         assert 0.0 <= y <= 1.0
 
+
+def test_find_spot_for_grid_cell_match():
+    from app_parking.services.astar import find_spot_for_grid_cell
+    spots = [
+        {
+            "id": "A01",
+            "status": "available",
+            "polygon": [
+                {"x": 0.0, "y": 0.0},
+                {"x": 1.0, "y": 0.0},
+                {"x": 1.0, "y": 1.0},
+                {"x": 0.0, "y": 1.0},
+            ],
+        }
+    ]
+    result = find_spot_for_grid_cell([0, 0], 1, 1, spots)
+    assert result is not None
+    assert result["id"] == "A01"
+
 def test_save_grid_success(client, tmp_path):
     with patch("app_parking.routes.pathfinder.GRID_CONFIG_DIR", tmp_path):
         r = client.post("/api/pathfinder/grid/save", json={
