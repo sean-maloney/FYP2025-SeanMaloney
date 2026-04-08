@@ -208,6 +208,23 @@ def test_find_spot_for_grid_cell_no_match():
     result = find_spot_for_grid_cell([0, 0], 10, 10, spots)
     assert result is None
 
+
+def test_find_nearest_available_path_no_spots():
+    from app_parking.services.astar import find_nearest_available_path
+    grid = [[0] * 5 for _ in range(5)]
+    result = find_nearest_available_path(
+        camera_id="cam1",
+        rows=5,
+        cols=5,
+        start=[0, 0],
+        grid=grid,
+        parking_spaces=[[4, 4]],
+        spots_doc={"spots": []},
+    )
+    assert result["success"] is False
+    assert result["path"] == []
+    assert result["goal"] is None
+
 def test_save_grid_success(client, tmp_path):
     with patch("app_parking.routes.pathfinder.GRID_CONFIG_DIR", tmp_path):
         r = client.post("/api/pathfinder/grid/save", json={
