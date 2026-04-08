@@ -190,6 +190,24 @@ def test_find_spot_for_grid_cell_match():
     assert result is not None
     assert result["id"] == "A01"
 
+
+def test_find_spot_for_grid_cell_no_match():
+    from app_parking.services.astar import find_spot_for_grid_cell
+    spots = [
+        {
+            "id": "A01",
+            "status": "available",
+            "polygon": [
+                {"x": 0.8, "y": 0.8},
+                {"x": 1.0, "y": 0.8},
+                {"x": 1.0, "y": 1.0},
+                {"x": 0.8, "y": 1.0},
+            ],
+        }
+    ]
+    result = find_spot_for_grid_cell([0, 0], 10, 10, spots)
+    assert result is None
+
 def test_save_grid_success(client, tmp_path):
     with patch("app_parking.routes.pathfinder.GRID_CONFIG_DIR", tmp_path):
         r = client.post("/api/pathfinder/grid/save", json={
