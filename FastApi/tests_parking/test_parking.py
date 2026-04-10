@@ -239,6 +239,37 @@ def test_find_nearest_available_path_all_occupied():
     assert result["path"] == []
     assert result["goal"] is None
 
+def test_find_nearest_available_path_success():
+    from app_parking.services.astar import find_nearest_available_path
+    grid = [[0] * 5 for _ in range(5)]
+    result = find_nearest_available_path(
+        camera_id="cam1",
+        rows=5,
+        cols=5,
+        start=[0, 0],
+        grid=grid,
+        parking_spaces=[[4, 4]],
+        spots_doc={
+            "spots": [
+                {
+                    "id": "A01",
+                    "status": "available",
+                    "polygon": [
+                        {"x": 0.0, "y": 0.0},
+                        {"x": 1.0, "y": 0.0},
+                        {"x": 1.0, "y": 1.0},
+                        {"x": 0.0, "y": 1.0},
+                    ],
+                }
+            ]
+        },
+    )
+    assert result["success"] is True
+    assert result["goal"] == [4, 4]
+    assert result["path"][0] == [0, 0]
+    assert result["path"][-1] == [4, 4]
+    assert len(result["path"]) > 1
+
 def test_save_grid_success(client, tmp_path):
     with patch("app_parking.routes.pathfinder.GRID_CONFIG_DIR", tmp_path):
         r = client.post("/api/pathfinder/grid/save", json={
