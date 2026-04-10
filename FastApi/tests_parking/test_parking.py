@@ -270,6 +270,19 @@ def test_find_nearest_available_path_success():
     assert result["path"][-1] == [4, 4]
     assert len(result["path"]) > 1
 
+
+def test_astar_large_grid_performance():
+    import time
+    from app_parking.services.astar import run_astar_process
+    grid = [[0] * 100 for _ in range(100)]
+    start_time = time.time()
+    result = run_astar_process("test", 100, 100, [0, 0], [99, 99], grid)
+    elapsed = time.time() - start_time
+    assert result["success"] is True
+    assert result["path"][0] == [0, 0]
+    assert result["path"][-1] == [99, 99]
+    assert elapsed < 2.0
+
 def test_save_grid_success(client, tmp_path):
     with patch("app_parking.routes.pathfinder.GRID_CONFIG_DIR", tmp_path):
         r = client.post("/api/pathfinder/grid/save", json={
