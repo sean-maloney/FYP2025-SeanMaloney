@@ -27,6 +27,261 @@ def test_save_grid_missing_camera_id(client):
     r = client.post("/api/pathfinder/grid/save", json={"rows": 2, "cols": 2, "grid": [[0, 0], [0, 0]], "start": [0, 0]})
     assert r.status_code == 400
 
+def test_save_grid_row_count_mismatch(client, tmp_path):
+    with patch("app_parking.routes.pathfinder.GRID_CONFIG_DIR", tmp_path):
+        r = client.post("/api/pathfinder/grid/save", json={
+            "camera_id": "cam1",
+            "rows": 3,
+            "cols": 2,
+            "grid": [[0, 0], [0, 0]],
+            "start": [0, 0],
+            "parking_spaces": [],
+        })
+    assert r.status_code == 400
+    assert "row" in r.json()["detail"]
+
+def test_save_grid_col_count_mismatch(client, tmp_path):
+    with patch("app_parking.routes.pathfinder.GRID_CONFIG_DIR", tmp_path):
+        r = client.post("/api/pathfinder/grid/save", json={
+            "camera_id": "cam1",
+            "rows": 2,
+            "cols": 3,
+            "grid": [[0, 0], [0, 0]],
+            "start": [0, 0],
+            "parking_spaces": [],
+        })
+    assert r.status_code == 400
+    assert "col" in r.json()["detail"]
+
+def test_save_grid_zero_rows(client, tmp_path):
+    with patch("app_parking.routes.pathfinder.GRID_CONFIG_DIR", tmp_path):
+        r = client.post("/api/pathfinder/grid/save", json={
+            "camera_id": "cam1",
+            "rows": 0,
+            "cols": 2,
+            "grid": [],
+            "start": [0, 0],
+            "parking_spaces": [],
+        })
+    assert r.status_code == 400
+
+def test_save_grid_start_outside_grid(client, tmp_path):
+    with patch("app_parking.routes.pathfinder.GRID_CONFIG_DIR", tmp_path):
+        r = client.post("/api/pathfinder/grid/save", json={
+            "camera_id": "cam1",
+            "rows": 2,
+            "cols": 2,
+            "grid": [[0, 0], [0, 0]],
+            "start": [5, 5],
+            "parking_spaces": [],
+        })
+    assert r.status_code == 400
+    assert "start" in r.json()["detail"]
+
+def test_save_grid_start_negative(client, tmp_path):
+    with patch("app_parking.routes.pathfinder.GRID_CONFIG_DIR", tmp_path):
+        r = client.post("/api/pathfinder/grid/save", json={
+            "camera_id": "cam1",
+            "rows": 2,
+            "cols": 2,
+            "grid": [[0, 0], [0, 0]],
+            "start": [-1, 0],
+            "parking_spaces": [],
+        })
+    assert r.status_code == 400
+    assert "start" in r.json()["detail"]
+
+def test_save_grid_parking_space_outside_grid(client, tmp_path):
+    with patch("app_parking.routes.pathfinder.GRID_CONFIG_DIR", tmp_path):
+        r = client.post("/api/pathfinder/grid/save", json={
+            "camera_id": "cam1",
+            "rows": 2,
+            "cols": 2,
+            "grid": [[0, 0], [0, 0]],
+            "start": [0, 0],
+            "parking_spaces": [[5, 5]],
+        })
+    assert r.status_code == 400
+    assert "parking" in r.json()["detail"]
+
+def test_save_grid_parking_space_negative(client, tmp_path):
+    with patch("app_parking.routes.pathfinder.GRID_CONFIG_DIR", tmp_path):
+        r = client.post("/api/pathfinder/grid/save", json={
+            "camera_id": "cam1",
+            "rows": 2,
+            "cols": 2,
+            "grid": [[0, 0], [0, 0]],
+            "start": [0, 0],
+            "parking_spaces": [[-1, 0]],
+        })
+    assert r.status_code == 400
+    assert "parking" in r.json()["detail"]
+
+def test_astar_start_equals_goal():
+    from app_parking.services.astar import run_astar_process
+    grid = [[0] * 5 for _ in range(5)]
+    result = run_astar_process("test", 5, 5, [2, 2], [2, 2], grid)
+    assert result["success"] is False
+
+def test_save_spots_camera_id_mismatch(client):
+    r = client.post("/api/cameras/cam1/spots", json={
+        "camera_id": "cam2",
+        "spots": [],
+    })
+    assert r.status_code == 400
+    assert "match" in r.json()["detail"].lower()
+
+def test_job_snapshot_not_found(client):
+    r = client.get("/api/jobs/nonexistent-job-id/snapshot")
+    assert r.status_code == 404
+    assert "not found" in r.json()["detail"].lower()
+
+def test_get_published_spots_not_found(client):
+    r = client.get("/api/cameras/nonexistent-camera/spots/published")
+    assert r.status_code == 404
+    assert "not found" in r.json()["detail"].lower()
+
+def test_sample_points_for_grid_cell_center():
+    from app_parking.services.astar import sample_points_for_grid_cell
+    points = sample_points_for_grid_cell([0, 0], 10, 10)
+    center = points[0]
+    assert center == (0.05, 0.05)
+
+def test_sample_points_for_grid_cell_returns_five_points():
+    from app_parking.services.astar import sample_points_for_grid_cell
+    points = sample_points_for_grid_cell([2, 3], 10, 10)
+    assert len(points) == 5
+
+def test_sample_points_for_grid_cell_all_within_bounds():
+    from app_parking.services.astar import sample_points_for_grid_cell
+    points = sample_points_for_grid_cell([2, 3], 10, 10)
+    for x, y in points:
+        assert 0.0 <= x <= 1.0
+        assert 0.0 <= y <= 1.0
+
+def test_find_spot_for_grid_cell_match():
+    from app_parking.services.astar import find_spot_for_grid_cell
+    spots = [
+        {
+            "id": "A01",
+            "status": "available",
+            "polygon": [
+                {"x": 0.0, "y": 0.0},
+                {"x": 1.0, "y": 0.0},
+                {"x": 1.0, "y": 1.0},
+                {"x": 0.0, "y": 1.0},
+            ],
+        }
+    ]
+    result = find_spot_for_grid_cell([0, 0], 1, 1, spots)
+    assert result is not None
+    assert result["id"] == "A01"
+
+def test_find_spot_for_grid_cell_no_match():
+    from app_parking.services.astar import find_spot_for_grid_cell
+    spots = [
+        {
+            "id": "A01",
+            "status": "available",
+            "polygon": [
+                {"x": 0.8, "y": 0.8},
+                {"x": 1.0, "y": 0.8},
+                {"x": 1.0, "y": 1.0},
+                {"x": 0.8, "y": 1.0},
+            ],
+        }
+    ]
+    result = find_spot_for_grid_cell([0, 0], 10, 10, spots)
+    assert result is None
+
+def test_find_nearest_available_path_no_spots():
+    from app_parking.services.astar import find_nearest_available_path
+    grid = [[0] * 5 for _ in range(5)]
+    result = find_nearest_available_path(
+        camera_id="cam1",
+        rows=5,
+        cols=5,
+        start=[0, 0],
+        grid=grid,
+        parking_spaces=[[4, 4]],
+        spots_doc={"spots": []},
+    )
+    assert result["success"] is False
+    assert result["path"] == []
+    assert result["goal"] is None
+
+def test_find_nearest_available_path_all_occupied():
+    from app_parking.services.astar import find_nearest_available_path
+    grid = [[0] * 5 for _ in range(5)]
+    result = find_nearest_available_path(
+        camera_id="cam1",
+        rows=5,
+        cols=5,
+        start=[0, 0],
+        grid=grid,
+        parking_spaces=[[4, 4]],
+        spots_doc={
+            "spots": [
+                {
+                    "id": "A01",
+                    "status": "occupied",
+                    "polygon": [
+                        {"x": 0.0, "y": 0.0},
+                        {"x": 1.0, "y": 0.0},
+                        {"x": 1.0, "y": 1.0},
+                        {"x": 0.0, "y": 1.0},
+                    ],
+                }
+            ]
+        },
+    )
+    assert result["success"] is False
+    assert result["path"] == []
+    assert result["goal"] is None
+
+def test_find_nearest_available_path_success():
+    from app_parking.services.astar import find_nearest_available_path
+    grid = [[0] * 5 for _ in range(5)]
+    result = find_nearest_available_path(
+        camera_id="cam1",
+        rows=5,
+        cols=5,
+        start=[0, 0],
+        grid=grid,
+        parking_spaces=[[4, 4]],
+        spots_doc={
+            "spots": [
+                {
+                    "id": "A01",
+                    "status": "available",
+                    "polygon": [
+                        {"x": 0.0, "y": 0.0},
+                        {"x": 1.0, "y": 0.0},
+                        {"x": 1.0, "y": 1.0},
+                        {"x": 0.0, "y": 1.0},
+                    ],
+                }
+            ]
+        },
+    )
+    assert result["success"] is True
+    assert result["goal"] == [4, 4]
+    assert result["path"][0] == [0, 0]
+    assert result["path"][-1] == [4, 4]
+    assert len(result["path"]) > 1
+
+
+def test_astar_large_grid_performance():
+    import time
+    from app_parking.services.astar import run_astar_process
+    grid = [[0] * 100 for _ in range(100)]
+    start_time = time.time()
+    result = run_astar_process("test", 100, 100, [0, 0], [99, 99], grid)
+    elapsed = time.time() - start_time
+    assert result["success"] is True
+    assert result["path"][0] == [0, 0]
+    assert result["path"][-1] == [99, 99]
+    assert elapsed < 2.0
 
 def test_save_grid_success(client, tmp_path):
     with patch("app_parking.routes.pathfinder.GRID_CONFIG_DIR", tmp_path):
