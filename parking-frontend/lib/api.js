@@ -1,5 +1,5 @@
 export const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000";
+  process.env.NEXT_PUBLIC_API_BASE_URL || "http://192.168.1.5:8000";
 
 async function parseResponse(response) {
   const text = await response.text().catch(() => "");
@@ -52,4 +52,36 @@ export async function getPublishedSpots(cameraId) {
 export async function getGridConfig(cameraId) {
   const response = await fetch(`${API_BASE}/api/pathfinder/grid/${cameraId}`);
   return parseResponse(response);
+}
+
+export async function runFromCapture(cameraId) {
+  const body = new FormData();
+  body.append("camera_id", cameraId);
+  const response = await fetch(`${API_BASE}/api/experience/run-from-capture`, {
+    method: "POST",
+    body,
+  });
+  return parseResponse(response);
+}
+
+export async function runPiCapture(cameraId) {
+  const body = new FormData();
+  body.append("camera_id", cameraId);
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 120_000);
+
+  try {
+    const response = await fetch(`${API_BASE}/api/pi/capture-and-run`, {
+      method: "POST",
+      body,
+      signal: controller.signal,
+    });
+    return parseResponse(response);
+  } catch (err) {
+    if (err.name === "AbortError") throw new Error("Request timed out after 2 minutes.");
+    throw err;
+  } finally {
+    clearTimeout(timeout);
+  }
 }

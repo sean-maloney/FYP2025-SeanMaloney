@@ -6,6 +6,7 @@ import {
   getGridConfig,
   getPublishedSpots,
   runParkingExperience,
+  runFromCapture,
 } from "../../lib/api";
 
 function pointInPolygon(point, polygon, width, height) {
@@ -46,6 +47,7 @@ export default function ParkingExperience() {
 
   const [cameraId, setCameraId] = useState("cam1");
   const [videoFile, setVideoFile] = useState(null);
+  const [usePiCamera, setUsePiCamera] = useState(false);
   const [adminMode, setAdminMode] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
   const [status, setStatus] = useState("Upload a video and press Get Parking.");
@@ -240,7 +242,7 @@ export default function ParkingExperience() {
   }
 
   async function handleRunPipeline() {
-    if (!videoFile) {
+    if (!usePiCamera && !videoFile) {
       setError("Please choose a video first.");
       return;
     }
@@ -253,8 +255,9 @@ export default function ParkingExperience() {
       await preloadConfigs(cameraId);
 
       setStatus("Running parking pipeline...");
-      const data = await runParkingExperience({ file: videoFile, cameraId });
-      console.log("experience result:", data);
+      const data = usePiCamera
+        ? await runFromCapture(cameraId)
+        : await runParkingExperience({ file: videoFile, cameraId });
 
       setResult(data);
       setSnapshotUrl(`${API_BASE}${data.snapshot_url}?t=${Date.now()}`);
@@ -326,7 +329,20 @@ export default function ParkingExperience() {
               accept="video/*"
               onChange={(e) => setVideoFile(e.target.files?.[0] || null)}
               className={styles.fileInput}
+              disabled={usePiCamera}
             />
+          </label>
+
+          <label className={styles.toggleWrap}>
+            <input
+              type="checkbox"
+              checked={usePiCamera}
+              onChange={(e) => {
+                setUsePiCamera(e.target.checked);
+                setVideoFile(null);
+              }}
+            />
+            <span>Use Pi camera snapshot</span>
           </label>
         </div>
 
