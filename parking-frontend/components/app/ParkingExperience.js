@@ -421,7 +421,7 @@ export default function ParkingExperience() {
                     Open Camera Monitor
                   </Link>
 
-                  <Link href="/pathfinder" className={styles.secondaryLink}>
+                  <Link href="/grid-setup" className={styles.secondaryLink}>
                     Open Pathfinder Grid Editor
                   </Link>
 

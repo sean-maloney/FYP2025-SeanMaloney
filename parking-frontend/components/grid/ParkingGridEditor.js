@@ -234,16 +234,15 @@ export default function ParkingGridEditor({
     }
   }
 
-  function handleCanvasClick(event) {
-    if (actualRows === 0 || actualCols === 0) return;
+  const isDragging = useRef(false);
 
+  function getCellFromEvent(event) {
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    if (!canvas) return null;
 
     const rect = canvas.getBoundingClientRect();
     const scaleX = canvas.width / rect.width;
     const scaleY = canvas.height / rect.height;
-
     const mouseX = (event.clientX - rect.left) * scaleX;
     const mouseY = (event.clientY - rect.top) * scaleY;
 
@@ -257,25 +256,39 @@ export default function ParkingGridEditor({
     const col = Math.floor(mouseX / cellWidth);
     const row = Math.floor(mouseY / cellHeight);
 
-    if (row < 0 || row >= actualRows || col < 0 || col >= actualCols) return;
+    if (row < 0 || row >= actualRows || col < 0 || col >= actualCols) return null;
+    return { row, col };
+  }
 
-    const nextGrid = grid.map((r) => [...r]);
-
-    if (selectedTool === "start") {
-      for (let r = 0; r < nextGrid.length; r++) {
-        for (let c = 0; c < (nextGrid[r]?.length || 0); c++) {
-          if (nextGrid[r][c] === "start") {
-            nextGrid[r][c] = "road";
-          }
-        }
+  function paintCell(row, col) {
+    setGrid((prev) => {
+      const next = prev.map((r) => [...r]);
+      if (selectedTool === "start") {
+        for (let r = 0; r < next.length; r++)
+          for (let c = 0; c < (next[r]?.length || 0); c++)
+            if (next[r][c] === "start") next[r][c] = "road";
       }
-    }
-
-    if (!nextGrid[row]) return;
-    nextGrid[row][col] = selectedTool;
-
-    setGrid(nextGrid);
+      if (next[row]) next[row][col] = selectedTool;
+      return next;
+    });
     setErrorMessage("");
+  }
+
+  function handleMouseDown(event) {
+    if (actualRows === 0 || actualCols === 0) return;
+    isDragging.current = true;
+    const cell = getCellFromEvent(event);
+    if (cell) paintCell(cell.row, cell.col);
+  }
+
+  function handleMouseMove(event) {
+    if (!isDragging.current) return;
+    const cell = getCellFromEvent(event);
+    if (cell) paintCell(cell.row, cell.col);
+  }
+
+  function handleMouseUp() {
+    isDragging.current = false;
   }
 
   function buildPayload() {
@@ -625,10 +638,13 @@ export default function ParkingGridEditor({
         <div style={{ overflow: "auto", maxWidth: "100%" }}>
           <canvas
             ref={canvasRef}
-            onClick={handleCanvasClick}
+            onMouseDown={handleMouseDown}
+            onMouseMove={handleMouseMove}
+            onMouseUp={handleMouseUp}
+            onMouseLeave={handleMouseUp}
             style={{
               border: "1px solid #ccc",
-              cursor: "pointer",
+              cursor: "crosshair",
               maxWidth: "100%",
               height: "auto",
               background: "#fff",
