@@ -44,13 +44,13 @@ def _is_point_in_poly(px: int, py: int, poly_np: np.ndarray) -> bool:
 
 
 def _bottom_center(x1: float, y1: float, x2: float, y2: float) -> Tuple[int, int]:
-    return int((x1 + x2) / 2.0), int(y2)
+    return int((x1 + x2) / 2.0), int((y1 + y2) / 2.0)
 
 
 def analyze_image_with_spots(
     input_image: Path,
     spots_doc: Dict[str, Any],
-    conf: float = 0.25,
+    conf: float = 0.4,
     vehicle_class_ids: Optional[List[int]] = None,
 ) -> Dict[str, Any]:
     image = cv2.imread(str(input_image))
@@ -100,7 +100,7 @@ def run_inference_with_spots(
     input_video: Path,
     output_dir: Path,
     spots_doc: Dict[str, Any],
-    conf: float = 0.25,
+    conf: float = 0.4,
     vehicle_class_ids: Optional[List[int]] = None,
 ) -> Tuple[Path, int, int]:
     if yolo_model is None:
